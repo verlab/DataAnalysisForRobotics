@@ -1,0 +1,21 @@
+topics:
+  real_velocity:
+    name: "real_vel"
+    type: "geometry_msgs/Twist"
+    csv_file: "real_vel.csv"
+  controller_velocity:
+    name: "cmd_vel"
+    type: "geometry_msgs/Twist"
+    csv_file: "cmd_vel.csv"
+  real_position:
+    name: "ground_truth_pose"
+    type: "geometry_msgs/PoseWithCovarianceStamped"
+    csv_file: "ground_truth_pose.csv"
+  estimated_position:
+    name: "lego_loam-odom"
+    type: "geometry_msgs/PoseStamped"
+    csv_file: "lego_loam-odom.csv"
+  trajectory_plan:
+    name: "move_base-DWAPlannerROS-global_plan"
+    type: "nav_msgs/Path"
+    csv_file: "move_base-DWAPlannerROS-global_plan.csv" # it will be the name of the topic.csv
