@@ -712,12 +712,10 @@ def calculate_position_errors(bag_folder, run_id, topics, position_error=True, y
             'orientation': orientation_results}
     
 
-def save_errors_to_csv(errors_dict, bag_folder, run_id):
-    # Create output folder
+def save_errors_to_csv(errors_dict, bag_folder, run_id, label="position"):
     errors_folder = os.path.join(bag_folder, "errors")
     os.makedirs(errors_folder, exist_ok=True)
 
-    # Flatten the nested dictionary into a single-level dict
     flat_data = {}
     for category, subdict in errors_dict.items():
         for error_type, value_dict in subdict.items():
@@ -725,47 +723,124 @@ def save_errors_to_csv(errors_dict, bag_folder, run_id):
                 key = f"{category}_{error_type}_{axis}"
                 flat_data[key] = val
 
-    # Save as single-row CSV
     df = pd.DataFrame([flat_data])
-    out_file = os.path.join(errors_folder, f"errors_run_{run_id}.csv")
+    out_file = os.path.join(errors_folder, f"errors_{label}_run_{run_id}.csv")
     df.to_csv(out_file, index=False)
-    print(f"[INFO] Saved errors to {out_file}")
+    print(f"[INFO] Saved {label} errors to {out_file}")
 
-def calculate_and_save_all_errors(bag_folder, run_ids, topics, position_error=True, yaw_error=True):
-    all_errors = []
+def calculate_and_save_all_errors(bag_folder, run_ids, topics, position_error=True, yaw_error=True, velocity_error=True):
+    all_position_errors = []
+    all_velocity_errors = []
 
     for run_id in run_ids:
         print(f"\n[INFO] Processing run {run_id}...")
-        errors = calculate_position_errors(
-            bag_folder, run_id, topics,
-            position_error=position_error,
-            yaw_error=yaw_error
-        )
 
-        if errors:
-            # Flatten error dict
-            flat_data = {'run': run_id}
-            for category, subdict in errors.items():
-                for error_type, val_dict in subdict.items():
-                    for axis, value in val_dict.items():
-                        key = f"{category}_{error_type}_{axis}"
-                        flat_data[key] = value
+        # --- Position + Yaw Errors ---
+        if position_error or yaw_error:
+            pos_errors = calculate_position_errors(
+                bag_folder, run_id, topics,
+                position_error=position_error,
+                yaw_error=yaw_error
+            )
 
-            all_errors.append(flat_data)
+            if pos_errors:
+                flat_pos = {'run': run_id}
+                for category, subdict in pos_errors.items():
+                    for error_type, val_dict in subdict.items():
+                        for axis, value in val_dict.items():
+                            key = f"{category}_{error_type}_{axis}"
+                            flat_pos[key] = value
+                all_position_errors.append(flat_pos)
+                save_errors_to_csv(pos_errors, bag_folder, run_id, label="position")
 
-    if not all_errors:
-        print("[WARNING] No error data collected.")
-        return
+        # --- Velocity Errors ---
+        if velocity_error:
+            vel_errors = calculate_velocity_errors(bag_folder, run_id, topics)
 
-    # Create output folder
+            if vel_errors:
+                flat_vel = {'run': run_id}
+                for category, subdict in vel_errors.items():
+                    for error_type, val_dict in subdict.items():
+                        for axis, value in val_dict.items():
+                            key = f"{category}_{error_type}_{axis}"
+                            flat_vel[key] = value
+                all_velocity_errors.append(flat_vel)
+                save_errors_to_csv(vel_errors, bag_folder, run_id, label="velocity")
+
+    # --- Save combined CSVs ---
     errors_folder = os.path.join(bag_folder, "errors")
     os.makedirs(errors_folder, exist_ok=True)
 
-    # Save everything to a single CSV file
-    errors_df = pd.DataFrame(all_errors)
-    out_path = os.path.join(errors_folder, "all_runs_errors.csv")
-    errors_df.to_csv(out_path, index=False)
-    print(f"[INFO] Saved all error metrics to {out_path}")
+    if all_position_errors:
+        df_pos = pd.DataFrame(all_position_errors)
+        df_pos.to_csv(os.path.join(errors_folder, "all_runs_position_errors.csv"), index=False)
+        print("[INFO] Saved position errors for all runs.")
+
+    if all_velocity_errors:
+        df_vel = pd.DataFrame(all_velocity_errors)
+        df_vel.to_csv(os.path.join(errors_folder, "all_runs_velocity_errors.csv"), index=False)
+        print("[INFO] Saved velocity errors for all runs.")
+
+def interpolate_to_match(reference_df, target_df, columns):
+    """
+    Interpolate columns of `target_df` to match `reference_df`'s timestamps.
+    """
+    interpolated = {}
+    for col in columns:
+        interpolated[col] = np.interp(
+            reference_df['Time'].astype(float),
+            target_df['Time'].astype(float),
+            target_df[col].astype(float)
+        )
+    return pd.DataFrame(interpolated)
+
+
+def calculate_velocity_errors(bag_folder, run_id, topics):
+    real_topic_name = topics.get('real_velocity', {}).get('name')
+    ctrl_topic_name = topics.get('controller_velocity', {}).get('name')
+
+    if not real_topic_name or not ctrl_topic_name:
+        print("[ERROR] Could not find real or controller velocity topics in config.")
+        return None
+
+    run_folder = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}")
+    real_path = os.path.join(run_folder, f"{real_topic_name}.csv")
+    ctrl_path = os.path.join(run_folder, f"{ctrl_topic_name}.csv")
+
+    if not os.path.isfile(real_path) or not os.path.isfile(ctrl_path):
+        print(f"[ERROR] Missing velocity CSVs for run {run_id}")
+        return None
+
+    # Load and strip columns
+    real_df = pd.read_csv(real_path)
+    ctrl_df = pd.read_csv(ctrl_path)
+    real_df.columns = real_df.columns.str.strip()
+    ctrl_df.columns = ctrl_df.columns.str.strip()
+
+    vel_cols = ['linear.x', 'linear.y', 'linear.z', 'angular.x', 'angular.y', 'angular.z']
+
+    # Interpolate controller data to match real timestamps
+    ctrl_interp = interpolate_to_match(real_df, ctrl_df, vel_cols)
+    real_trimmed = real_df[vel_cols].reset_index(drop=True)
+
+    # Compute errors
+    rmse_vel = compute_rmse_per_axis(real_trimmed, ctrl_interp)
+    abs_vel = compute_absolute_errors_per_axis(real_trimmed, ctrl_interp)
+    abs_mean = {axis: np.mean(abs_vel[axis]) for axis in abs_vel}
+    abs_max = {axis: np.max(abs_vel[axis]) for axis in abs_vel}
+
+    # Print and return
+    print(f"[INFO] Velocity RMSE (run {run_id}): {rmse_vel}")
+    print(f"[INFO] Mean Absolute Velocity Error: {abs_mean}")
+    print(f"[INFO] Max Absolute Velocity Error: {abs_max}")
+
+    return {
+        'velocity': {
+            'rmse': rmse_vel,
+            'mean_absolute_error': abs_mean,
+            'max_absolute_error': abs_max
+        }
+    }
 
 def main():
     bag_folder = "/home/manuela/Documents/VerLab/library_test"
@@ -796,29 +871,24 @@ def main():
     # plot_real_trajectory=False, 
     # plot_planned_trajectory=False, 
     # offset_real=True)
-    errors = calculate_position_errors(bag_folder, 0, topics)
-    save_errors_to_csv(errors, bag_folder, run_id=0)
 
-    calculate_and_save_all_errors(bag_folder, run_ids=list(range(num_bags)), topics=topics)
+    pos_errors = calculate_position_errors(bag_folder, 0, topics)
+    save_errors_to_csv(pos_errors, bag_folder, run_id=0)
+
+    # Calculate velocity errors
+    vel_errors = calculate_velocity_errors(bag_folder, 0, topics)
+    save_errors_to_csv(vel_errors, bag_folder, 0, label="velocity")
+
+    calculate_and_save_all_errors(
+        bag_folder,
+        run_ids=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19],
+        topics=topics,
+        position_error=True,
+        yaw_error=True,
+        velocity_error=True
+    )
 
 if __name__ == "__main__":
     main()
 
-# PLOTTING ISSUES
-# plot velocities from all the runs together -> OK
-# plot vels from one run ! name them based on the run id -> OK
-# plot mean velocities between runs -> OK
-
-# plot one trajectory alone -> OK
-
-# plot real trajectory -> OK
-# plot planned trajectory -> OK
-# plot real x planned trajectory -OK
-# obs: make an argument if waypoints is true to plot them as well - NO bc no one will have them but later
-
-# calculating issues
-# position error (absolute and rmse)
-# orientation error (absolute and rmse)
-# velocity error (absolute and rmse)
-# trajectory error (absolute and rmse)
 
