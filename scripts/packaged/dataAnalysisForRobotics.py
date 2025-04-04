@@ -7,6 +7,7 @@ import pandas as pd
 import re
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.metrics import mean_squared_error
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
@@ -568,6 +569,168 @@ def plot_single_trajectory_or_comparison(bag_folder, run_id, topics, plot_real_t
     else:
         print(f"[ERROR] No trajectory to be plotted?")
 
+def load_and_subsample(estimated_df, ground_truth_df):
+    factor = len(estimated_df) // len(ground_truth_df)
+    estimated_subsampled = estimated_df.iloc[::max(1, factor)].reset_index(drop=True)
+
+    min_len = min(len(estimated_subsampled), len(ground_truth_df))
+    estimated_subsampled = estimated_subsampled.iloc[:min_len]
+    ground_truth_df = ground_truth_df.iloc[:min_len]
+
+    return estimated_subsampled, ground_truth_df
+
+def compute_rmse_per_axis(gt_df, est_df):
+    return {
+        axis: np.sqrt(mean_squared_error(gt_df[axis], est_df[axis]))
+        for axis in gt_df.columns
+    }
+
+def compute_absolute_errors_per_axis(gt_df, est_df):
+    return {
+        axis: np.abs(gt_df[axis] - est_df[axis]).values
+        for axis in gt_df.columns
+    }
+
+def extract_position_columns(df, label):
+    candidates = [
+        ('pose.position.x', 'pose.position.y', 'pose.position.z'),
+        ('pose.pose.position.x', 'pose.pose.position.y', 'pose.pose.position.z'),
+        ('position.x', 'position.y', 'position.z'),
+        ('x', 'y', 'z'),
+    ]
+    for cols in candidates:
+        if all(col in df.columns for col in cols):
+            pos_df = df[list(cols)].copy()
+            pos_df.columns = ['pose.position.x', 'pose.position.y', 'pose.position.z']
+            return pos_df
+
+    print(f"[ERROR] Could not find position x/y/z columns in {label} file.")
+    print(f"Available columns: {list(df.columns)}")
+    raise KeyError(f"{label}: missing expected position columns")
+
+def extract_orientation_x_column(df, label):
+    candidates = [
+        'pose.orientation.x',
+        'pose.pose.orientation.x',
+        'orientation.x'
+    ]
+    for col in candidates:
+        if col in df.columns:
+            return df[[col]].rename(columns={col: 'pose.orientation.x'})
+
+    print(f"[WARNING] Could not find orientation.x column in {label} file.")
+    return None
+
+def calculate_position_errors(bag_folder, run_id, topics, position_error=True, yaw_error=True):
+    real_topic_name = topics.get('real_position', {}).get('name')
+    est_topic_name = topics.get('estimated_position', {}).get('name')
+
+    if not real_topic_name or not est_topic_name:
+        print("[ERROR] Could not find real or estimated position topics in config.")
+        return None
+
+    run_folder = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}")
+    real_path = os.path.join(run_folder, f"{real_topic_name}.csv")
+    est_path = os.path.join(run_folder, f"{est_topic_name}.csv")
+
+    if not os.path.isfile(real_path):
+        print(f"[ERROR] Ground truth file not found: {real_path}")
+        return None
+    if not os.path.isfile(est_path):
+        print(f"[ERROR] Estimated position file not found: {est_path}")
+        return None
+
+    # Load and clean
+    real_df = pd.read_csv(real_path)
+    est_df = pd.read_csv(est_path)
+    real_df.columns = real_df.columns.str.strip()
+    est_df.columns = est_df.columns.str.strip()
+
+    # --- Position Error ---
+    if position_error:
+        real_pos = extract_position_columns(real_df, label="Ground Truth")
+        est_pos = extract_position_columns(est_df, label="Estimated Position")
+        est_pos_sub, real_pos_sub = load_and_subsample(est_pos, real_pos)
+
+        rmse_pos = compute_rmse_per_axis(real_pos_sub, est_pos_sub)
+        ape_pos = compute_absolute_errors_per_axis(real_pos_sub, est_pos_sub)
+        ape_mean_pos = {axis: np.mean(ape_pos[axis]) for axis in ape_pos}
+        ape_max_pos = {axis: np.max(ape_pos[axis]) for axis in ape_pos}
+
+    # --- Orientation.x Error ---
+    if yaw_error:
+        real_ori = extract_orientation_x_column(real_df, label="Ground Truth")
+        est_ori = extract_orientation_x_column(est_df, label="Estimated Position")
+        orientation_results = {}
+
+        if real_ori is not None and est_ori is not None:
+            est_ori_sub, real_ori_sub = load_and_subsample(est_ori, real_ori)
+
+            rmse_ori = compute_rmse_per_axis(real_ori_sub, est_ori_sub)
+            ape_ori = compute_absolute_errors_per_axis(real_ori_sub, est_ori_sub)
+            ape_mean_ori = {axis: np.mean(ape_ori[axis]) for axis in ape_ori}
+            ape_max_ori = {axis: np.max(ape_ori[axis]) for axis in ape_ori}
+
+            # Print and store orientation.x errors
+            print(f"[INFO] Orientation.x RMSE (run {run_id}): {rmse_ori}")
+            print(f"[INFO] Orientation.x Mean Absolute Error: {ape_mean_ori}")
+            print(f"[INFO] Orientation.x Max Absolute Error: {ape_max_ori}")
+
+            orientation_results = {
+                'rmse': rmse_ori,
+                'mean_absolute_error': ape_mean_ori,
+                'max_absolute_error': ape_max_ori
+            }
+        else:
+            print(f"[WARNING] Orientation.x not found in one or both files — skipping orientation error.")
+
+    # --- Print and Return All ---
+    if position_error:
+        print(f"[INFO] Position RMSE per axis (run {run_id}): {rmse_pos}")
+        print(f"[INFO] Mean Absolute Position Error per axis: {ape_mean_pos}")
+        print(f"[INFO] Max Absolute Position Error per axis: {ape_max_pos}")
+
+    if position_error and yaw_error:
+        return {
+            'position': {
+                'rmse': rmse_pos,
+                'mean_absolute_error': ape_mean_pos,
+                'max_absolute_error': ape_max_pos
+            },
+            'orientation': orientation_results}
+    
+    elif position_error and not yaw_error:
+        return {
+            'position': {
+                'rmse': rmse_pos,
+                'mean_absolute_error': ape_mean_pos,
+                'max_absolute_error': ape_max_pos
+            }}
+    
+    elif not position_error and yaw_error:
+        return {
+            'orientation': orientation_results}
+    
+
+def save_errors_to_csv(errors_dict, bag_folder, run_id):
+    # Create output folder
+    errors_folder = os.path.join(bag_folder, "errors")
+    os.makedirs(errors_folder, exist_ok=True)
+
+    # Flatten the nested dictionary into a single-level dict
+    flat_data = {}
+    for category, subdict in errors_dict.items():
+        for error_type, value_dict in subdict.items():
+            for axis, val in value_dict.items():
+                key = f"{category}_{error_type}_{axis}"
+                flat_data[key] = val
+
+    # Save as single-row CSV
+    df = pd.DataFrame([flat_data])
+    out_file = os.path.join(errors_folder, f"errors_run_{run_id}.csv")
+    df.to_csv(out_file, index=False)
+    print(f"[INFO] Saved errors to {out_file}")
+
 def main():
     bag_folder = "/home/manuela/Documents/VerLab/library_test"
 
@@ -590,14 +753,17 @@ def main():
 
     # plot_mean_velocity(bag_folder, run_ids=[0, 1], topic_name="real_vel", topics=topics)
 
-    plot_single_trajectory_or_comparison(
-    bag_folder, 
-    run_id=0, 
-    topics=topics, 
-    plot_real_trajectory=False, 
-    plot_planned_trajectory=False, 
-    offset_real=True
-)
+    # plot_single_trajectory_or_comparison(
+    #  bag_folder, 
+    # run_id=0, 
+    # topics=topics, 
+    # plot_real_trajectory=False, 
+    # plot_planned_trajectory=False, 
+    # offset_real=True)
+
+    errors = calculate_position_errors(bag_folder, 0, topics)
+
+    save_errors_to_csv(errors, bag_folder, run_id=0)
 
 if __name__ == "__main__":
     main()
@@ -609,8 +775,14 @@ if __name__ == "__main__":
 
 # plot one trajectory alone -> OK
 
-# plot real trajectory
-# plot planned trajectory
-# plot real x planned trajectory
-# obs: make an argument if waypoints is true to plot them as well 
+# plot real trajectory -> OK
+# plot planned trajectory -> OK
+# plot real x planned trajectory -OK
+# obs: make an argument if waypoints is true to plot them as well - NO bc no one will have them but later
+
+# calculating issues
+# position error (absolute and rmse)
+# orientation error (absolute and rmse)
+# velocity error (absolute and rmse)
+# trajectory error (absolute and rmse)
 
