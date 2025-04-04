@@ -731,13 +731,49 @@ def save_errors_to_csv(errors_dict, bag_folder, run_id):
     df.to_csv(out_file, index=False)
     print(f"[INFO] Saved errors to {out_file}")
 
+def calculate_and_save_all_errors(bag_folder, run_ids, topics, position_error=True, yaw_error=True):
+    all_errors = []
+
+    for run_id in run_ids:
+        print(f"\n[INFO] Processing run {run_id}...")
+        errors = calculate_position_errors(
+            bag_folder, run_id, topics,
+            position_error=position_error,
+            yaw_error=yaw_error
+        )
+
+        if errors:
+            # Flatten error dict
+            flat_data = {'run': run_id}
+            for category, subdict in errors.items():
+                for error_type, val_dict in subdict.items():
+                    for axis, value in val_dict.items():
+                        key = f"{category}_{error_type}_{axis}"
+                        flat_data[key] = value
+
+            all_errors.append(flat_data)
+
+    if not all_errors:
+        print("[WARNING] No error data collected.")
+        return
+
+    # Create output folder
+    errors_folder = os.path.join(bag_folder, "errors")
+    os.makedirs(errors_folder, exist_ok=True)
+
+    # Save everything to a single CSV file
+    errors_df = pd.DataFrame(all_errors)
+    out_path = os.path.join(errors_folder, "all_runs_errors.csv")
+    errors_df.to_csv(out_path, index=False)
+    print(f"[INFO] Saved all error metrics to {out_path}")
+
 def main():
     bag_folder = "/home/manuela/Documents/VerLab/library_test"
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(current_dir, "config.yaml")
 
-    num_bags = 2
+    num_bags = 20
 
     topics = load_config(config_path)
 
@@ -760,10 +796,10 @@ def main():
     # plot_real_trajectory=False, 
     # plot_planned_trajectory=False, 
     # offset_real=True)
-
     errors = calculate_position_errors(bag_folder, 0, topics)
-
     save_errors_to_csv(errors, bag_folder, run_id=0)
+
+    calculate_and_save_all_errors(bag_folder, run_ids=list(range(num_bags)), topics=topics)
 
 if __name__ == "__main__":
     main()
