@@ -17,6 +17,7 @@ This repository contains a set of scripts and utilities to process and analyze R
   - [Setup](#setup)
   - [Execution Flow](#execution-flow)
 - [Errors and Plots](#errors-and-plots)
+- [Execution Flow Example](#execution-flow-example)
 - [Available Functions](#available-functions)
   - [Setup & Data Preparation](#setup--data-preparation)
   - [Plotting](#plotting)
