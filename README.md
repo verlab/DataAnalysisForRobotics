@@ -2,6 +2,27 @@
 
 This repository contains a set of scripts and utilities to process and analyze ROS bag files. It converts ROS bags into CSV format, organizes data per topic, generates plots for velocities and trajectories, and computes errors for analysis.
 
+<p align="center">
+  <img src="/home/manuela/Documents/VerLab/dataAnalysisForRobotics/DataAnalysisForRobotics/images/mean_linear_real_vel.png" width="150" height="150" alt="Image 1"/>
+  <img src="/home/manuela/Documents/VerLab/dataAnalysisForRobotics/DataAnalysisForRobotics/images/real_velocities_run_0.png" width="150" height="150" alt="Image 2"/>
+  <img src="/home/manuela/Documents/VerLab/dataAnalysisForRobotics/DataAnalysisForRobotics/images/True_vs_Planned_Path_run_10.png" width="150" height="150" alt="Image 3"/>
+</p>
+
+## Table of Contents
+
+- [Overview](#data-analysis-for-robotics-simulations)
+- [Dependencies](#dependencies)
+- [Folder Structure Created by Script](#folder-structure-created-by-script)
+- [User Manual](#user-manual)
+  - [Setup](#setup)
+  - [Execution Flow](#execution-flow)
+- [Errors and Plots](#errors-and-plots)
+- [Available Functions](#available-functions)
+  - [Setup & Data Preparation](#setup--data-preparation)
+  - [Plotting](#plotting)
+  - [Error Computation](#error-computation)
+- [Notes and Warnings](#notes-and-warnings)
+
 ## Dependencies
 
 - `bagpy`
@@ -77,8 +98,55 @@ The script must be executed in the following order in `main()`:
 
 ## Errors and Plots
 
-- Errors are computed as RMSE, mean absolute, and max absolute errors per axis (X, Y, Z).
-- Plots generated are saved as PNG images in the `plots` folder.
+This library generates visualizations and numerical evaluations of your robot's performance by comparing ground-truth data with planned or estimated trajectories and velocities.
+
+### Error Metrics
+
+Errors are calculated along three axes — X, Y, and Z — using the following metrics:
+
+- **RMSE (Root Mean Square Error)**  
+  Measures the standard deviation of the differences between predicted and actual values. A lower RMSE indicates better performance.
+
+- **Mean Absolute Error (MAE)**  
+  The average magnitude of errors in each axis, giving a direct sense of how far off the values are on average.
+
+- **Max Absolute Error**  
+  The single largest deviation observed for each axis, useful for identifying worst-case behavior.
+
+The following types of errors are computed:
+
+- **Position Error:**  
+  Compares estimated robot positions against ground-truth (e.g., from localization vs. odometry).
+
+- **Yaw Error (Orientation):**  
+  Specifically compares the X component of quaternion orientation to assess heading error.
+
+- **Velocity Error:**  
+  Compares commanded (planned/controller) velocities against the actual executed velocities (real velocity).
+
+All errors are saved as CSV files in the `errors/` directory and aggregated for all specified runs.
+
+---
+
+### Plot Outputs
+
+Plots are automatically generated from CSV data and saved in the `plots/` folder. These help visually assess the system's behavior and compare it to expectations.
+
+- **Velocity Plots (Per Run and All Runs):**
+  - Real and planned linear and angular velocities are plotted over time.
+  - Helps visualize tracking accuracy and controller behavior.
+
+- **Mean Velocity Plot (Across Runs):**
+  - Aggregates multiple runs and plots the average velocity over time.
+  - Useful to observe overall controller consistency.
+
+- **Trajectory Plots:**
+  - 2D trajectory visualization (X vs. Y) of both real and planned paths.
+  - Optional offset to origin for alignment and easier visual comparison.
+  - Waypoints (if provided) are plotted as reference markers.
+
+Each plot is saved as a PNG image and named accordingly (e.g., `real_velocities_run_0.png`, `trajectory_comparison_run_1.png`, etc.).
+
 
 ## Available Functions
 
