@@ -126,7 +126,7 @@ The following types of errors are computed:
 
 All errors are saved as CSV files in the `errors/` directory and aggregated for all specified runs.
 
----
+### Execution Flow Example
 
 ### Plot Outputs
 
@@ -146,6 +146,132 @@ Plots are automatically generated from CSV data and saved in the `plots/` folder
   - Waypoints (if provided) are plotted as reference markers.
 
 Each plot is saved as a PNG image and named accordingly (e.g., `real_velocities_run_0.png`, `trajectory_comparison_run_1.png`, etc.).
+
+## Execution Flow Example
+
+The following steps illustrate a typical usage of the library by walking through the `main()` function. Each function call processes ROS bag data and generates structured outputs, plots, and evaluation metrics.
+
+
+### 1.) Load Topic Configuration
+
+Load your topic definitions (names, types, and CSV output filenames) from a YAML config file.
+
+```python
+topics = load_config("config.yaml")
+```
+
+*Loads topic metadata required for all downstream steps.*
+
+### 2.) Convert ROS Bags to CSV
+
+Convert `.bag` files into individual CSV files, one folder per run.
+
+```python
+convert_bags_to_csv(bag_folder, num_bags, topics)
+```
+
+*Creates `csv_files/per_run/run_X/` folders, each with CSVs for all topics.*
+
+
+### 3.) Organize CSVs by Topic
+
+Reorganize per-run CSVs into per-topic folders.
+
+```python
+organize_csv_per_topic(bag_folder, num_bags, topics)
+```
+
+*Creates `csv_files/per_topic/topic_name/` folders for analysis.*
+
+### 4.) Plot Velocities for All Runs
+
+Generate linear and angular velocity plots for both real and planned velocities.
+
+```python
+plot_velocities_for_all_runs(bag_folder, num_bags, topics)
+```
+
+*Saves plots to `plots/real_vel_linear_all_runs.png`, etc.*
+
+### 5.) Plot Velocities for Single Run
+
+Generate velocity plots (6 subplots) for one run: both real and planned.
+
+```python
+plot_velocities_for_single_run(bag_folder, run_id=0, topics=topics)
+```
+
+*Saves plot as `plots/real_velocities_run_0.png`, etc.*
+
+
+### 6.) Plot Mean Velocity Across Runs
+
+Plot average linear and angular velocity across multiple runs for a specific topic.
+
+```python
+plot_mean_velocity(bag_folder, run_ids=[0, 1], topic_name="real_vel", topics=topics)
+```
+
+*Outputs `plots/mean_linear_real_vel.png` and `mean_angular_real_vel.png`.*
+
+
+### 7.) Plot Trajectory Comparison
+
+Overlay real and planned trajectories (with optional origin alignment).
+
+```python
+plot_single_trajectory_or_comparison(
+  bag_folder,
+  run_id=0,
+  topics=topics,
+  plot_real_trajectory=True,
+  plot_planned_trajectory=True,
+  offset_real=True
+)
+```
+
+*Generates `trajectory_comparison_run_0.png` inside `plots/`.*
+
+
+### 8.) Calculate and Save Position Errors (Single Run)
+
+Compare estimated vs. ground truth positions and save RMSE, MAE, and max errors.
+
+```python
+pos_errors = calculate_position_errors(bag_folder, 0, topics)
+save_errors_to_csv(pos_errors, bag_folder, run_id=0)
+```
+
+*Output: `errors/errors_position_run_0.csv`*
+
+
+### 9.) Calculate and Save Velocity Errors (Single Run)
+
+Evaluate tracking quality by comparing real vs. controller velocity.
+
+```python
+vel_errors = calculate_velocity_errors(bag_folder, 0, topics)
+save_errors_to_csv(vel_errors, bag_folder, 0, label="velocity")
+```
+
+*Output: `errors/errors_velocity_run_0.csv`*
+
+
+### 10.) Full Error Evaluation (All Runs)
+
+Run all error computations (position, yaw, and velocity) for a list of runs and aggregate results.
+
+```python
+calculate_and_save_all_errors(
+  bag_folder,
+  run_ids=[0, 1],
+  topics=topics,
+  position_error=True,
+  yaw_error=True,
+  velocity_error=True
+)
+```
+ *Outputs individual CSVs per run + combined error tables in `errors/`*
 
 
 ## Available Functions

@@ -852,32 +852,31 @@ def main():
 
     topics = load_config(config_path)
 
-    # convert_bags_to_csv(bag_folder, num_bags, topics)
+    convert_bags_to_csv(bag_folder, num_bags, topics)
 
-    # organize_csv_per_topic(bag_folder, num_bags, topics)
+    organize_csv_per_topic(bag_folder, num_bags, topics)
 
-    # plot_velocities_for_all_runs(bag_folder, num_bags, topics)
+    plot_velocities_for_all_runs(bag_folder, num_bags, topics)
 
-    # plot_velocities_for_single_run(bag_folder, run_id=0, topics=topics)
+    plot_velocities_for_single_run(bag_folder, run_id=0, topics=topics)
 
-    # plot_velocities_for_single_run(bag_folder, 0, topics)
+    plot_velocities_for_single_run(bag_folder, 0, topics)
 
-    # plot_mean_velocity(bag_folder, run_ids=[0, 1], topic_name="real_vel", topics=topics)
+    plot_mean_velocity(bag_folder, run_ids=[0, 1], topic_name="real_vel", topics=topics)
 
-    # plot_single_trajectory_or_comparison(
-    #   bag_folder, 
-    #   run_id=0, 
-    #   topics=topics, 
-    #   plot_real_trajectory=True, 
-    #   plot_planned_trajectory=True, 
-    #   offset_real=True)
+    plot_single_trajectory_or_comparison(
+      bag_folder, 
+      run_id=0, 
+      topics=topics, 
+      plot_real_trajectory=True, 
+      plot_planned_trajectory=True, 
+      offset_real=True)
 
-    # pos_errors = calculate_position_errors(bag_folder, 0, topics)
-    # save_errors_to_csv(pos_errors, bag_folder, run_id=0)
-
-    # # # Calculate velocity errors
-    # vel_errors = calculate_velocity_errors(bag_folder, 0, topics)
-    # save_errors_to_csv(vel_errors, bag_folder, 0, label="velocity")
+    pos_errors = calculate_position_errors(bag_folder, 0, topics)
+    save_errors_to_csv(pos_errors, bag_folder, run_id=0)
+    
+    vel_errors = calculate_velocity_errors(bag_folder, 0, topics)
+    save_errors_to_csv(vel_errors, bag_folder, 0, label="velocity")
 
     calculate_and_save_all_errors(
          bag_folder,
