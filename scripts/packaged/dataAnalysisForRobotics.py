@@ -848,7 +848,7 @@ def main():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(current_dir, "config.yaml")
 
-    num_bags = 20
+    num_bags = 2
 
     topics = load_config(config_path)
 
@@ -865,28 +865,28 @@ def main():
     # plot_mean_velocity(bag_folder, run_ids=[0, 1], topic_name="real_vel", topics=topics)
 
     # plot_single_trajectory_or_comparison(
-    #  bag_folder, 
-    # run_id=0, 
-    # topics=topics, 
-    # plot_real_trajectory=False, 
-    # plot_planned_trajectory=False, 
-    # offset_real=True)
+    #   bag_folder, 
+    #   run_id=0, 
+    #   topics=topics, 
+    #   plot_real_trajectory=True, 
+    #   plot_planned_trajectory=True, 
+    #   offset_real=True)
 
-    pos_errors = calculate_position_errors(bag_folder, 0, topics)
-    save_errors_to_csv(pos_errors, bag_folder, run_id=0)
+    # pos_errors = calculate_position_errors(bag_folder, 0, topics)
+    # save_errors_to_csv(pos_errors, bag_folder, run_id=0)
 
-    # Calculate velocity errors
-    vel_errors = calculate_velocity_errors(bag_folder, 0, topics)
-    save_errors_to_csv(vel_errors, bag_folder, 0, label="velocity")
+    # # # Calculate velocity errors
+    # vel_errors = calculate_velocity_errors(bag_folder, 0, topics)
+    # save_errors_to_csv(vel_errors, bag_folder, 0, label="velocity")
 
     calculate_and_save_all_errors(
-        bag_folder,
-        run_ids=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19],
-        topics=topics,
-        position_error=True,
-        yaw_error=True,
-        velocity_error=True
-    )
+         bag_folder,
+         run_ids=[0,1],
+         topics=topics,
+         position_error=True,
+         yaw_error=True,
+         velocity_error=True
+     )
 
 if __name__ == "__main__":
     main()
