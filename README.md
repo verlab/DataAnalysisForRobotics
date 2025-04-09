@@ -3,9 +3,9 @@
 This repository contains a set of scripts and utilities to process and analyze ROS bag files. It converts ROS bags into CSV format, organizes data per topic, generates plots for velocities and trajectories, and computes errors for analysis.
 
 <p align="center">
-  <img src="dataAnalysisForRobotics/DataAnalysisForRobotics/images/mean_linear_real_vel.png" width="150" height="150" alt="Image 1"/>
-  <img src="dataAnalysisForRobotics/DataAnalysisForRobotics/images/real_velocities_run_0.png" width="150" height="150" alt="Image 2"/>
-  <img src="dataAnalysisForRobotics/DataAnalysisForRobotics/images/True_vs_Planned_Path_run_10.png" width="150" height="150" alt="Image 3"/>
+  <img src="./images/mean_linear_real_vel.png" width="150" height="150" alt="Image 1"/>
+  <img src="./images/real_velocities_run_0.png" width="150" height="150" alt="Image 2"/>
+  <img src="./images/True_vs_Planned_Path_run_10.png" width="150" height="150" alt="Image 3"/>
 </p>
 
 ## Table of Contents
