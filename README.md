@@ -183,7 +183,6 @@ Plots are automatically generated from CSV data and saved in the `plots/` folder
 - **Trajectory Plots:**
   - 2D trajectory visualization (X vs. Y) of both real and planned paths.
   - Optional offset to origin for alignment and easier visual comparison.
-  - Waypoints (if provided) are plotted as reference markers.
 
 Each plot is saved as a PNG image and named accordingly (e.g., `real_velocities_run_0.png`, `trajectory_comparison_run_1.png`, etc.).
 
@@ -388,10 +387,6 @@ Scans for `.bag` files in the folder and returns a dictionary mapping `run_X` fi
 
 - **`plot_trajectory(csv_path, ...)`**  
   Low-level helper to plot X-Y trajectory from a CSV.
-
-- **`plot_waypoints(csv_path)`**  
-  Parses a list of waypoints and plots them as `X` marks.
-
 
 ### Error Computation
 
