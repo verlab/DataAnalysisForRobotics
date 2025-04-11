@@ -17,6 +17,7 @@ This repository contains a set of scripts and utilities to process and analyze R
   - [Setup](#setup)
   - [Execution Flow](#execution-flow)
 - [Errors and Plots](#errors-and-plots)
+- [Bag File Naming Warning](#bag-file-naming-warning)
 - [Execution Flow Example](#execution-flow-example)
 - [Available Functions](#available-functions)
   - [Setup & Data Preparation](#setup--data-preparation)
@@ -126,6 +127,28 @@ The following types of errors are computed:
   Compares commanded (planned/controller) velocities against the actual executed velocities (real velocity).
 
 All errors are saved as CSV files in the `errors/` directory and aggregated for all specified runs.
+
+### Bag File Naming Warning
+
+> **ROS Bag File Format Requirement**
+>
+> This tool requires your ROS bag files to follow the **default ROS naming convention**, which looks like this:
+>
+> ```` 
+> YYYY-MM-DD-HH-MM-SS.bag
+> ````
+>
+> Example:
+>
+> ```` 
+> 2025-04-11-13-55-04.bag
+> ````
+>
+> Files that do not match this exact format will be **ignored** during processing.  
+> This naming convention is used to determine the temporal order of the bags (oldest to newest) before assigning them internally as `run_0`, `run_1`, etc.
+>
+> ✅ Valid: `2024-12-01-08-00-00.bag`  
+> ❌ Invalid: `test_run1.bag`, `04112025_13_55_04.bag`, `run0.bag`
 
 ### Execution Flow Example
 

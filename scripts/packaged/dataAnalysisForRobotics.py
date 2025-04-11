@@ -1,35 +1,61 @@
 import os
 from bagpy import bagreader
 import shutil
-import warnings
 import yaml
 import pandas as pd
 import re
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import mean_squared_error
+import glob
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
         config = yaml.safe_load(file)
     return config['topics']
 
-def convert_bags_to_csv(bag_folder, num_bags, topics):
-    if not isinstance(num_bags, int) or num_bags <= 0:
-        raise ValueError(f"{num_bags} is not a valid number. Must be a positive integer")
-    
+def get_sorted_bag_mapping(bag_folder):
+    bag_files = glob.glob(os.path.join(bag_folder, "*.bag"))
+    if not bag_files:
+        raise FileNotFoundError(f"No .bag files found in {bag_folder}")
+
+    # Expected filename pattern
+    pattern = re.compile(r"\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.bag$")
+
+
+    valid_bags = []
+    for bag in bag_files:
+        if pattern.match(os.path.basename(bag)):
+            valid_bags.append(bag)
+        else:
+            print(f"[WARNING] Skipping file with invalid name format: {os.path.basename(bag)}")
+
+    if not valid_bags:
+        raise ValueError("No valid bag files found after format filtering.")
+
+    # Sort by file modification time (oldest first)
+    sorted_bags = sorted(valid_bags, key=os.path.getmtime)
+
+    # Map run index to bag path
+    bag_mapping = {f"run_{i}": path for i, path in enumerate(sorted_bags)}
+
+    # Print the mapping
+    print("\n[INFO] Bag Mapping (oldest → newest):")
+    for run_id, path in bag_mapping.items():
+        print(f"  {run_id} → {os.path.basename(path)}")
+
+    return bag_mapping
+
+
+def convert_bags_to_csv(bag_folder, bag_mapping, topics):
     base_output_folder = os.path.join(bag_folder, "csv_files", "per_run")
     os.makedirs(base_output_folder, exist_ok=True)
-    
-    # Check if trajectory plan needs cleaning
+
     plan_topic = topics.get('trajectory_plan')
     clean_plan = plan_topic and plan_topic['type'] == "nav_msgs/Path"
     plan_csv_name = plan_topic['csv_file'] if plan_topic else None
 
-    for i in range(num_bags):
-        bag_name = f'run_{i}.bag'
-        bag_path = os.path.join(bag_folder, bag_name)
-
+    for run_label, bag_path in bag_mapping.items():
         if not os.path.isfile(bag_path):
             print(f"[WARNING] Bag file not found: {bag_path}")
             continue
@@ -37,7 +63,7 @@ def convert_bags_to_csv(bag_folder, num_bags, topics):
         print(f"[INFO] Reading: {bag_path}")
         b = bagreader(bag_path)
 
-        run_folder = os.path.join(base_output_folder, f"run_{i}")
+        run_folder = os.path.join(base_output_folder, run_label)
         os.makedirs(run_folder, exist_ok=True)
 
         for topic in b.topics:
@@ -48,10 +74,10 @@ def convert_bags_to_csv(bag_folder, num_bags, topics):
             shutil.move(csv_path, dest_path)
             print(f"[INFO] Moved CSV to: {dest_path}")
 
-            # If it's the trajectory plan and type is nav_msgs/Path clean it
             if clean_plan and os.path.basename(csv_path) == plan_csv_name:
-                print(f"[INFO] Cleaning trajectory plan CSV for run_{i}")
+                print(f"[INFO] Cleaning trajectory plan CSV for {run_label}")
                 extract_poses_from_csv(dest_path, dest_path)
+
 
 def parse_pose_block(pose_block):
     pos_match = re.search(r'position:\s*x:\s*([-\d.e]+)\s*y:\s*([-\d.e]+)\s*z:\s*([-\d.e]+)', pose_block)
@@ -843,16 +869,21 @@ def calculate_velocity_errors(bag_folder, run_id, topics):
     }
 
 def main():
-    bag_folder = "/home/manuela/Documents/VerLab/library_test"
+    bag_folder = "/home/manuela/Documents/VerLab/dataAnalysisForRobotics/lib_tests/lib_script_test"
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(current_dir, "config.yaml")
 
-    num_bags = 2
-
     topics = load_config(config_path)
 
-    convert_bags_to_csv(bag_folder, num_bags, topics)
+    # Get sorted bag mapping
+    bag_mapping = get_sorted_bag_mapping(bag_folder)
+
+    # # Convert bags to CSV using mapping
+    # convert_bags_to_csv(bag_folder, bag_mapping, topics)
+
+    # # Use number of runs from mapping
+    num_bags = len(bag_mapping)
 
     organize_csv_per_topic(bag_folder, num_bags, topics)
 
@@ -885,7 +916,7 @@ def main():
          position_error=True,
          yaw_error=True,
          velocity_error=True
-     )
+      )
 
 if __name__ == "__main__":
     main()
