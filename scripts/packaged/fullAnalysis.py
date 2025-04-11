@@ -2,6 +2,7 @@ import os
 import argparse
 from dataAnalysisForRobotics import (
     load_config,
+    get_sorted_bag_mapping,
     convert_bags_to_csv,
     organize_csv_per_topic,
     plot_velocities_for_all_runs,
@@ -14,10 +15,15 @@ from dataAnalysisForRobotics import (
     calculate_and_save_all_errors
 )
 
-def analyze_data(bag_folder, num_bags, run_ids, config_path):
+def analyze_data(bag_folder, config_path):
     topics = load_config(config_path)
 
-    convert_bags_to_csv(bag_folder, num_bags, topics)
+    # Get bag file mapping sorted by time
+    bag_mapping = get_sorted_bag_mapping(bag_folder)
+    run_ids = list(range(len(bag_mapping)))
+    num_bags = len(run_ids)
+
+    convert_bags_to_csv(bag_folder, bag_mapping, topics)
     organize_csv_per_topic(bag_folder, num_bags, topics)
     plot_velocities_for_all_runs(bag_folder, num_bags, topics)
 
@@ -51,16 +57,12 @@ def analyze_data(bag_folder, num_bags, run_ids, config_path):
 def main():
     parser = argparse.ArgumentParser(description="Run full data analysis pipeline.")
     parser.add_argument('--bag_folder', type=str, required=True, help='Path to bag folder')
-    parser.add_argument('--num_bags', type=int, required=True, help='Number of bag files')
-    parser.add_argument('--run_ids', nargs='+', type=int, required=True, help='List of run IDs')
     parser.add_argument('--config_path', type=str, default="config.yaml", help='Path to config.yaml')
 
     args = parser.parse_args()
 
     analyze_data(
         bag_folder=args.bag_folder,
-        num_bags=args.num_bags,
-        run_ids=args.run_ids,
         config_path=args.config_path
     )
 

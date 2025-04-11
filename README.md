@@ -33,11 +33,13 @@ This repository contains a set of scripts and utilities to process and analyze R
 - `pyyaml`
 - `numpy`
 - `scikit-learn`
+- `re`
+- `glob`
 
 Install dependencies with:
 
 ```
-pip install bagpy pandas matplotlib pyyaml numpy scikit-learn
+pip install bagpy pandas matplotlib pyyaml numpy scikit-learn glob2
 ```
 
 
