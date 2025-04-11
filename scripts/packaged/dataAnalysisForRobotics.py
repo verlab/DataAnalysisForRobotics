@@ -78,6 +78,14 @@ def convert_bags_to_csv(bag_folder, bag_mapping, topics):
                 print(f"[INFO] Cleaning trajectory plan CSV for {run_label}")
                 extract_poses_from_csv(dest_path, dest_path)
 
+        bag_name_without_ext = os.path.splitext(os.path.basename(bag_path))[0]
+        bag_output_folder = os.path.join(bag_folder, bag_name_without_ext)
+        if os.path.isdir(bag_output_folder) and not os.listdir(bag_output_folder):
+            try:
+                os.rmdir(bag_output_folder)
+                print(f"[INFO] Removed empty bag folder: {bag_output_folder}")
+            except Exception as e:
+                print(f"[WARNING] Failed to remove folder {bag_output_folder}: {e}")
 
 def parse_pose_block(pose_block):
     pos_match = re.search(r'position:\s*x:\s*([-\d.e]+)\s*y:\s*([-\d.e]+)\s*z:\s*([-\d.e]+)', pose_block)
@@ -879,10 +887,10 @@ def main():
     # Get sorted bag mapping
     bag_mapping = get_sorted_bag_mapping(bag_folder)
 
-    # # Convert bags to CSV using mapping
-    # convert_bags_to_csv(bag_folder, bag_mapping, topics)
+    # # # Convert bags to CSV using mapping
+    convert_bags_to_csv(bag_folder, bag_mapping, topics)
 
-    # # Use number of runs from mapping
+    # Use number of runs from mapping
     num_bags = len(bag_mapping)
 
     organize_csv_per_topic(bag_folder, num_bags, topics)
