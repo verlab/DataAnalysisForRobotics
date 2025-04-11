@@ -67,7 +67,7 @@ Upon running the script, the following structure is created within your specifie
 
 ### Setup
 
-1.  Place your ROS bag files (`run_X.bag`) inside a folder (`bag_folder`).
+1.  Place your ROS bag files inside a folder (`bag_folder`).
 2. Prepare your configuration file (`config.yaml`) according to your ROS topics.
 
 Example `config.yaml` structure:
@@ -92,13 +92,14 @@ topics:
 The script must be executed in the following order in `main()`:
 
 1. **load_config**
-2. **convert_bags_to_csv**
-3. **organize_csv_per_topic**
-4. **plot_velocities_for_all_runs** *(optional plotting)*
-5. **plot_velocities_for_single_run** *(optional plotting)*
-6. **plot_mean_velocity** *(optional plotting)*
-7. **plot_single_trajectory_or_comparison** *(optional plotting)*
-8. **calculate_and_save_all_errors**
+2. **get_sorted_bag_mapping**
+3. **convert_bags_to_csv**
+4. **organize_csv_per_topic**
+5. **plot_velocities_for_all_runs** *(optional plotting)*
+6. **plot_velocities_for_single_run** *(optional plotting)*
+7. **plot_mean_velocity** *(optional plotting)*
+8. **plot_single_trajectory_or_comparison** *(optional plotting)*
+9. **calculate_and_save_all_errors**
 
 ## Errors and Plots
 
@@ -188,7 +189,15 @@ topics = load_config("config.yaml")
 
 *Loads topic metadata required for all downstream steps.*
 
-### 2.) Convert ROS Bags to CSV
+### 2.) Sort ROS Bags
+
+Sort your bag files in chronological order.
+
+```python
+get_sorted_bag_mapping(bag_folder)
+```
+
+### 3.) Convert ROS Bags to CSV
 
 Convert `.bag` files into individual CSV files, one folder per run.
 
@@ -199,7 +208,7 @@ convert_bags_to_csv(bag_folder, num_bags, topics)
 *Creates `csv_files/per_run/run_X/` folders, each with CSVs for all topics.*
 
 
-### 3.) Organize CSVs by Topic
+### 4.) Organize CSVs by Topic
 
 Reorganize per-run CSVs into per-topic folders.
 
@@ -209,7 +218,7 @@ organize_csv_per_topic(bag_folder, num_bags, topics)
 
 *Creates `csv_files/per_topic/topic_name/` folders for analysis.*
 
-### 4.) Plot Velocities for All Runs
+### 5.) Plot Velocities for All Runs
 
 Generate linear and angular velocity plots for both real and planned velocities.
 
@@ -219,7 +228,7 @@ plot_velocities_for_all_runs(bag_folder, num_bags, topics)
 
 *Saves plots to `plots/real_vel_linear_all_runs.png`, etc.*
 
-### 5.) Plot Velocities for Single Run
+### 6.) Plot Velocities for Single Run
 
 Generate velocity plots (6 subplots) for one run: both real and planned.
 
@@ -230,7 +239,7 @@ plot_velocities_for_single_run(bag_folder, run_id=0, topics=topics)
 *Saves plot as `plots/real_velocities_run_0.png`, etc.*
 
 
-### 6.) Plot Mean Velocity Across Runs
+### 7.) Plot Mean Velocity Across Runs
 
 Plot average linear and angular velocity across multiple runs for a specific topic.
 
@@ -241,7 +250,7 @@ plot_mean_velocity(bag_folder, run_ids=[0, 1], topic_name="real_vel", topics=top
 *Outputs `plots/mean_linear_real_vel.png` and `mean_angular_real_vel.png`.*
 
 
-### 7.) Plot Trajectory Comparison
+### 8.) Plot Trajectory Comparison
 
 Overlay real and planned trajectories (with optional origin alignment).
 
@@ -259,7 +268,7 @@ plot_single_trajectory_or_comparison(
 *Generates `trajectory_comparison_run_0.png` inside `plots/`.*
 
 
-### 8.) Calculate and Save Position Errors (Single Run)
+### 9.) Calculate and Save Position Errors (Single Run)
 
 Compare estimated vs. ground truth positions and save RMSE, MAE, and max errors.
 
@@ -271,7 +280,7 @@ save_errors_to_csv(pos_errors, bag_folder, run_id=0)
 *Output: `errors/errors_position_run_0.csv`*
 
 
-### 9.) Calculate and Save Velocity Errors (Single Run)
+### 10.) Calculate and Save Velocity Errors (Single Run)
 
 Evaluate tracking quality by comparing real vs. controller velocity.
 
@@ -283,7 +292,7 @@ save_errors_to_csv(vel_errors, bag_folder, 0, label="velocity")
 *Output: `errors/errors_velocity_run_0.csv`*
 
 
-### 10.) Full Error Evaluation (All Runs)
+### 11.) Full Error Evaluation (All Runs)
 
 Run all error computations (position, yaw, and velocity) for a list of runs and aggregate results.
 
@@ -313,6 +322,13 @@ Below is a summary of the core functions provided by this library. These functio
   **Usage:**  
   ```python
   topics = load_config("path/to/config.yaml")
+  ```
+
+- **`get_sorted_bag_mapping(bag_folder`**  
+Scans for `.bag` files in the folder and returns a dictionary mapping `run_X` file path, sorted by modification time.
+  **Usage:**  
+  ```python
+python bag_mapping = get_sorted_bag_mapping("path/to/bag_folder")
   ```
 
 - **`convert_bags_to_csv(bag_folder, num_bags, topics)`**  
