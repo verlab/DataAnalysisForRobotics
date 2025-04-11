@@ -3,9 +3,9 @@
 This repository contains a set of scripts and utilities to process and analyze ROS bag files. It converts ROS bags into CSV format, organizes data per topic, generates plots for velocities and trajectories, and computes errors for analysis.
 
 <p align="center">
-  <img src="./images/mean_linear_real_vel.png" width="150" height="150" alt="Image 1"/>
-  <img src="./images/real_velocities_run_0.png" width="150" height="150" alt="Image 2"/>
-  <img src="./images/True_vs_Planned_Path_run_10.png" width="150" height="150" alt="Image 3"/>
+  <img src="./images/mean_linear_real_vel.png" width="200" height="200" alt="Image 1"/>
+  <img src="./images/real_velocities_run_0.png" width="200" height="200" alt="Image 2"/>
+  <img src="./images/True_vs_Planned_Path_run_10.png" width="200" height="200" alt="Image 3"/>
 </p>
 
 ## Table of Contents
@@ -88,8 +88,21 @@ topics:
     type: "nav_msgs/Path"
 ```
 
+### Command Line Usage
+You can use this repository either as a Python library, calling individual functions within your own code, or run it as a standalone script that automatically processes the bag files—handling conversion, plotting, and error calculations in one go.
+
+ From the root of the repository, run:
+
+```python
+cd scripts/packaged/
+```
+Then run the code:
+```python
+python fullAnalysis.py --bag_folder <path-to-ros-bags> --config_path config.yaml
+```
+
 ### Execution Flow
-The script must be executed in the following order in `main()`:
+To use it as a library, there are some obligatory commands, the script must be executed in the following order in `main()`:
 
 1. **load_config**
 2. **get_sorted_bag_mapping**
@@ -150,8 +163,8 @@ All errors are saved as CSV files in the `errors/` directory and aggregated for 
 > Files that do not match this exact format will be **ignored** during processing.  
 > This naming convention is used to determine the temporal order of the bags (oldest to newest) before assigning them internally as `run_0`, `run_1`, etc.
 >
-> ✅ Valid: `2024-12-01-08-00-00.bag`  
-> ❌ Invalid: `test_run1.bag`, `04112025_13_55_04.bag`, `run0.bag`
+> Valid: `2024-12-01-08-00-00.bag`  
+> Invalid: `test_run1.bag`, `04112025_13_55_04.bag`, `run0.bag`
 
 ### Execution Flow Example
 
@@ -326,9 +339,10 @@ Below is a summary of the core functions provided by this library. These functio
 
 - **`get_sorted_bag_mapping(bag_folder`**  
 Scans for `.bag` files in the folder and returns a dictionary mapping `run_X` file path, sorted by modification time.
+
   **Usage:**  
   ```python
-python bag_mapping = get_sorted_bag_mapping("path/to/bag_folder")
+  python bag_mapping = get_sorted_bag_mapping("path/to/bag_folder")
   ```
 
 - **`convert_bags_to_csv(bag_folder, num_bags, topics)`**  
