@@ -40,3 +40,42 @@ Check the deviation of a GNSS system.
   ```
   python3 scripts/plot_gps_from_csv.py --csv run_0/ublox-fix.csv --max-distance 0.2
   ```
+
+### Moving (Lap) Test
+Segment a trajectory into laps and plot continuous, colored paths for each run.
+
+#### What it does
+* Scans every `run_*` folder under a user‑provided root directory.  
+* For each `run_X`, reads all `*-fix.csv` files (e.g. `ublox_F9P-fix.csv`, `blabla-fix.csv`).  
+* Segments each file’s latitude/longitude data into laps based on:
+  - **distance threshold** (meters to close a lap)  
+  - **minimum duration** (seconds before considering a lap closed)  
+* Generates:
+  1. **Per‑sensor plots**: `run_X_<sensor>_continuous_laps.png` (one PNG per sensor per run).  
+  2. **Combined plot**: `run_X_combined_continuous_laps.png`, overlaying all sensors’ laps.  
+
+All plots are saved in the `plots/` folder under the specified root.
+
+#### How to run it
+From the `GNSS/scripts/` directory:
+```bash
+python plot_gps_laps_from_csv.py \
+  --data_dir /path/to/GNSS \
+  [--run_distance_threshold 5.0] \
+  [--min_run_duration 30.0]
+```
+
+**Arguments**  
+- `--data_dir`              : Root folder containing `run_*` subdirectories (required).  
+- `--run_distance_threshold`: Meters to close a lap (default: `5.0`).  
+- `--min_run_duration`      : Min lap duration in seconds (default: `30.0`).  
+
+**Example**  
+```bash
+python plot_gps_laps_from_csv.py \
+  --data_dir ~/Documents/VAL/GNSS/git/DataAnalysisForRobotics \
+  --run_distance_threshold 3.0 \
+  --min_run_duration 20.0
+```
+
+After running, check the `plots/` folder at the project root for all generated PNGs.
