@@ -1,0 +1,22 @@
+topics:
+  real_position:
+    name: "carla-ego_vehicle-odometry"
+    type: "geometry_msgs/PoseWithCovarianceStamped"
+    csv_file: "carla-ego_vehicle-odometry.csv"
+  estimated_position:
+    lego_loam:
+      name: "lego_loam-odom"
+      type: "geometry_msgs/PoseStamped"
+      csv_file: "lego_loam-odom.csv"
+    lio_sam:
+      name: "odometry-imu"
+      type: "geometry_msgs/PoseStamped"
+      csv_file: "odometry-imu.csv"
+    fast_lio:
+      name: "Odometry"
+      type: "geometry_msgs/PoseStamped"
+      csv_file: "Odometry.csv"
+    dlio:
+      name: "dlio-odom_node-odom"
+      type: "geometry_msgs/PoseStamped"
+      csv_file: "dlio-odom_node-odom.csv"
