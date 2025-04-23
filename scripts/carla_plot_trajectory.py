@@ -25,7 +25,7 @@ Outputs:
 
 Navigate into the script path and execute:
 
-    'python3 plot_trajectory.py'
+    'python3 carla_plot_trajectory.py'
 '''
 
 import os
