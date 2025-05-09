@@ -110,14 +110,21 @@ def analyze_data(base_folder, config_path):
     topics = load_config(config_path)
     algorithms = topics["estimated_position"].keys()
     for algorithm in algorithms:
+        if algorithm not in os.listdir(base_folder):
+            continue
+        
         topics = load_config(config_path)
         topics["estimated_position"] = topics["estimated_position"][algorithm]
 
         for map in ['Town03', 'Town04', 'Town06']:
             # Get bag file mapping sorted by time
             bag_folder = base_folder+'/'+algorithm+'/'+map
+            
+            if map not in os.listdir(base_folder+'/'+algorithm):
+                continue
             if 'errors' in os.listdir(bag_folder):
                 continue
+            
             bag_mapping = get_sorted_bag_mapping(bag_folder)
             run_ids = list(range(len(bag_mapping)))
             num_bags = len(run_ids)
@@ -145,7 +152,8 @@ def analyze_data(base_folder, config_path):
                 topics=topics,
                 position_error=True,
                 yaw_error=True,
-                velocity_error=False
+                velocity_error=False,
+                trajectory_error=True
             )
             
     summarize_errors_by_algorithm(base_folder, algorithms)

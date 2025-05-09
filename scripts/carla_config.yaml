@@ -20,3 +20,7 @@ topics:
       name: "dlio-odom_node-odom"
       type: "geometry_msgs/PoseStamped"
       csv_file: "dlio-odom_node-odom.csv"
+  trajectory_plan:
+    name: "initialpose"
+    type: "nav_msgs/Path"
+    csv_file: "initialpose.csv"
