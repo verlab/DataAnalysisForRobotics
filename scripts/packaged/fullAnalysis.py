@@ -12,7 +12,8 @@ from dataAnalysisForRobotics import (
     calculate_position_errors,
     calculate_velocity_errors,
     save_errors_to_csv,
-    calculate_and_save_all_errors
+    calculate_and_save_all_errors,
+    calculate_length_drift_error
 )
 
 def analyze_data(bag_folder, config_path):
@@ -45,13 +46,17 @@ def analyze_data(bag_folder, config_path):
         vel_errors = calculate_velocity_errors(bag_folder, run_id, topics)
         save_errors_to_csv(vel_errors, bag_folder, run_id, label="velocity")
 
+        drift_errors = calculate_length_drift_error(bag_folder, run_id, topics)
+        save_errors_to_csv(drift_errors, bag_folder, run_id, label="length_drift")
+
     calculate_and_save_all_errors(
         bag_folder=bag_folder,
         run_ids=run_ids,
         topics=topics,
         position_error=True,
         yaw_error=True,
-        velocity_error=True
+        velocity_error=True,
+        length_drift_error=True 
     )
 
 def main():

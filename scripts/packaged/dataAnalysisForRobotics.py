@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import mean_squared_error
 import glob
+from geopy.distance import geodesic
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
@@ -762,9 +763,13 @@ def save_errors_to_csv(errors_dict, bag_folder, run_id, label="position"):
     df.to_csv(out_file, index=False)
     print(f"[INFO] Saved {label} errors to {out_file}")
 
-def calculate_and_save_all_errors(bag_folder, run_ids, topics, position_error=True, yaw_error=True, velocity_error=True):
+def calculate_and_save_all_errors(
+    bag_folder, run_ids, topics,
+    position_error=True, yaw_error=True, velocity_error=True, length_drift_error=True
+):
     all_position_errors = []
     all_velocity_errors = []
+    all_drift_errors = []
 
     for run_id in run_ids:
         print(f"\n[INFO] Processing run {run_id}...")
@@ -776,7 +781,6 @@ def calculate_and_save_all_errors(bag_folder, run_ids, topics, position_error=Tr
                 position_error=position_error,
                 yaw_error=yaw_error
             )
-
             if pos_errors:
                 flat_pos = {'run': run_id}
                 for category, subdict in pos_errors.items():
@@ -790,7 +794,6 @@ def calculate_and_save_all_errors(bag_folder, run_ids, topics, position_error=Tr
         # --- Velocity Errors ---
         if velocity_error:
             vel_errors = calculate_velocity_errors(bag_folder, run_id, topics)
-
             if vel_errors:
                 flat_vel = {'run': run_id}
                 for category, subdict in vel_errors.items():
@@ -800,6 +803,19 @@ def calculate_and_save_all_errors(bag_folder, run_ids, topics, position_error=Tr
                             flat_vel[key] = value
                 all_velocity_errors.append(flat_vel)
                 save_errors_to_csv(vel_errors, bag_folder, run_id, label="velocity")
+
+        # --- Length Drift Errors ---
+        if length_drift_error:
+            drift_errors = calculate_length_drift_error(bag_folder, run_id, topics)
+            if drift_errors:
+                flat_drift = {'run': run_id}
+                for category, subdict in drift_errors.items():
+                    for error_type, val_dict in subdict.items():
+                        for axis, value in val_dict.items():
+                            key = f"{category}_{error_type}_{axis}"
+                            flat_drift[key] = value
+                all_drift_errors.append(flat_drift)
+                save_errors_to_csv(drift_errors, bag_folder, run_id, label="length_drift")
 
     # --- Save combined CSVs ---
     errors_folder = os.path.join(bag_folder, "errors")
@@ -814,6 +830,12 @@ def calculate_and_save_all_errors(bag_folder, run_ids, topics, position_error=Tr
         df_vel = pd.DataFrame(all_velocity_errors)
         df_vel.to_csv(os.path.join(errors_folder, "all_runs_velocity_errors.csv"), index=False)
         print("[INFO] Saved velocity errors for all runs.")
+
+    if all_drift_errors:
+        df_drift = pd.DataFrame(all_drift_errors)
+        df_drift.to_csv(os.path.join(errors_folder, "all_runs_length_drift_errors.csv"), index=False)
+        print("[INFO] Saved length drift errors for all runs.")
+
 
 def interpolate_to_match(reference_df, target_df, columns):
     """
@@ -876,8 +898,130 @@ def calculate_velocity_errors(bag_folder, run_id, topics):
         }
     }
 
+
+def calculate_gps_path_length(bag_folder, run_id, topics):
+    gps_topic = topics.get('gps_plan', {})
+    gps_csv_file = gps_topic.get('csv_file')
+
+    if not gps_csv_file:
+        print("[ERROR] 'gps_plan' topic missing or does not specify a 'csv_file' in config.yaml.")
+        return None
+
+    gps_csv_path = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}", gps_csv_file)
+
+    if not os.path.isfile(gps_csv_path):
+        print(f"[ERROR] GPS CSV file not found at path: {gps_csv_path}")
+        return None
+
+    # Load the GPS data
+    df = pd.read_csv(gps_csv_path)
+    df.columns = df.columns.str.strip()  # Clean column names
+
+    # Determine column names
+    lat_col = None
+    lon_col = None
+    alt_col = None
+
+    for lat_cand in ['latitude', 'lat']:
+        if lat_cand in df.columns:
+            lat_col = lat_cand
+            break
+    for lon_cand in ['longitude', 'lon']:
+        if lon_cand in df.columns:
+            lon_col = lon_cand
+            break
+    for alt_cand in ['altitude', 'alt']:
+        if alt_cand in df.columns:
+            alt_col = alt_cand
+            break
+
+    if not lat_col or not lon_col:
+        print(f"[ERROR] Could not find latitude/longitude columns in {gps_csv_path}. Found columns: {list(df.columns)}")
+        return None
+
+    # Compute total distance using geodesic distances between consecutive points
+    coords = list(zip(df[lat_col], df[lon_col]))
+    total_distance = 0.0
+
+    for i in range(1, len(coords)):
+        total_distance += geodesic(coords[i - 1], coords[i]).meters
+
+    print(f"[INFO] Total GPS path length for run_{run_id}: {total_distance:.2f} meters")
+    return total_distance
+
+def calculate_odometry_path_length(bag_folder, run_id, topics):
+    est_topic = topics.get('estimated_position', {})
+    est_csv_file = est_topic.get('csv_file')
+
+    if not est_csv_file:
+        print("[ERROR] 'estimated_position' topic missing or does not specify a 'csv_file' in config.yaml.")
+        return None
+
+    est_csv_path = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}", est_csv_file)
+
+    if not os.path.isfile(est_csv_path):
+        print(f"[ERROR] Estimated position CSV file not found at path: {est_csv_path}")
+        return None
+
+    # Load the CSV
+    df = pd.read_csv(est_csv_path)
+    df.columns = df.columns.str.strip()  # Clean column names
+
+    # Detect position columns
+    candidates = [
+        ('pose.position.x', 'pose.position.y', 'pose.position.z'),
+        ('pose.pose.position.x', 'pose.pose.position.y', 'pose.pose.position.z'),
+        ('position.x', 'position.y', 'position.z'),
+        ('x', 'y', 'z'),
+    ]
+
+    pos_cols = None
+    for cols in candidates:
+        if all(col in df.columns for col in cols):
+            pos_cols = cols
+            break
+
+    if not pos_cols:
+        print(f"[ERROR] Could not find position x/y/z columns in {est_csv_file}. Found columns: {list(df.columns)}")
+        return None
+
+    x, y, z = df[pos_cols[0]], df[pos_cols[1]], df[pos_cols[2]]
+    positions = np.stack([x, y, z], axis=1)
+
+    # Compute total Euclidean distance
+    diffs = np.diff(positions, axis=0)
+    segment_lengths = np.linalg.norm(diffs, axis=1)
+    total_length = np.sum(segment_lengths)
+
+    print(f"[INFO] Total odometry path length for run_{run_id}: {total_length:.2f} meters")
+    return total_length
+
+def calculate_length_drift_error(bag_folder, run_id, topics):
+    """
+    Calculate the path length drift error between GPS and odometry.
+    
+    Returns:
+        dict with RMSE and mean absolute error.
+    """
+    gps_len = calculate_gps_path_length(bag_folder, run_id, topics)
+    odom_len = calculate_odometry_path_length(bag_folder, run_id, topics)
+
+    if gps_len is None or odom_len is None:
+        return None
+
+    error = abs(gps_len - odom_len)
+    rmse = np.sqrt((gps_len - odom_len) ** 2)
+    print(f"[INFO] Length Drift Error (run {run_id}): MAE={error:.2f}m, RMSE={rmse:.2f}m")
+
+    return {
+        'length_drift': {
+            'mean_absolute_error': {'drift': error},
+            'rmse': {'drift': rmse}
+        }
+    }
+
 def main():
-    bag_folder = "/home/manuela/Documents/VerLab/dataAnalysisForRobotics/lib_tests/lib_script_test"
+    bag_folder = "where/are/your/bags"
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(current_dir, "config.yaml")
@@ -885,46 +1029,53 @@ def main():
     topics = load_config(config_path)
 
     # Get sorted bag mapping
-    bag_mapping = get_sorted_bag_mapping(bag_folder)
+    # bag_mapping = get_sorted_bag_mapping(bag_folder)
 
-    # # # Convert bags to CSV using mapping
-    convert_bags_to_csv(bag_folder, bag_mapping, topics)
+    # # # # Convert bags to CSV using mapping
+    # convert_bags_to_csv(bag_folder, bag_mapping, topics)
 
-    # Use number of runs from mapping
-    num_bags = len(bag_mapping)
+    # # Use number of runs from mapping
+    # num_bags = len(bag_mapping)
 
-    organize_csv_per_topic(bag_folder, num_bags, topics)
+    # organize_csv_per_topic(bag_folder, num_bags, topics)
 
-    plot_velocities_for_all_runs(bag_folder, num_bags, topics)
+    # plot_velocities_for_all_runs(bag_folder, num_bags, topics)
 
-    plot_velocities_for_single_run(bag_folder, run_id=0, topics=topics)
+    # plot_velocities_for_single_run(bag_folder, run_id=0, topics=topics)
 
-    plot_velocities_for_single_run(bag_folder, 0, topics)
+    # plot_velocities_for_single_run(bag_folder, 0, topics)
 
-    plot_mean_velocity(bag_folder, run_ids=[0, 1], topic_name="real_vel", topics=topics)
+    # plot_mean_velocity(bag_folder, run_ids=[0, 1], topic_name="real_vel", topics=topics)
 
-    plot_single_trajectory_or_comparison(
-      bag_folder, 
-      run_id=0, 
-      topics=topics, 
-      plot_real_trajectory=True, 
-      plot_planned_trajectory=True, 
-      offset_real=True)
+    # plot_single_trajectory_or_comparison(
+    #   bag_folder, 
+    #   run_id=0, 
+    #   topics=topics, 
+    #   plot_real_trajectory=True, 
+    #   plot_planned_trajectory=True, 
+    #   offset_real=True)
 
-    pos_errors = calculate_position_errors(bag_folder, 0, topics)
-    save_errors_to_csv(pos_errors, bag_folder, run_id=0)
+    # pos_errors = calculate_position_errors(bag_folder, 0, topics)
+    # save_errors_to_csv(pos_errors, bag_folder, run_id=0)
     
-    vel_errors = calculate_velocity_errors(bag_folder, 0, topics)
-    save_errors_to_csv(vel_errors, bag_folder, 0, label="velocity")
+    # vel_errors = calculate_velocity_errors(bag_folder, 0, topics)
+    # save_errors_to_csv(vel_errors, bag_folder, 0, label="velocity")
 
     calculate_and_save_all_errors(
          bag_folder,
-         run_ids=[0,1],
+         run_ids=[0,1,2],
          topics=topics,
          position_error=True,
          yaw_error=True,
-         velocity_error=True
-      )
+         velocity_error=True,
+         length_drift_error=True
+     )
+
+    path_length = calculate_gps_path_length(bag_folder, run_id=0, topics=topics)
+    print(path_length)
+
+    odom_length = calculate_odometry_path_length(bag_folder, run_id=0, topics=topics)
+    print(odom_length)
 
 if __name__ == "__main__":
     main()
