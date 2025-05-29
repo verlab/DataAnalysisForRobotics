@@ -1,0 +1,15 @@
+topics:
+  estimated_position:
+    name: "lego_loam-odom"
+    type: "geometry_msgs/PoseStamped"
+    csv_file: "lego_loam-odom.csv"
+  trajectory_plan:
+    name: "move_base-DWAPlannerROS-global_plan"
+    type: "nav_msgs/Path"
+    csv_file: "move_base-DWAPlannerROS-global_plan.csv" # it will be the name of the topic.csv
+  gps_plan:
+    name: "reach-fix"
+    type: "gps/points"
+    csv_file: "reach-fix.csv"
+  waypoints_coords:
+    name: "simulation_demo.yaml"
