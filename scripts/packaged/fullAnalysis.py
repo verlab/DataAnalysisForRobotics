@@ -10,7 +10,7 @@ from dataAnalysisForRobotics import (
     calculate_position_error_gps_vs_odometry,
     plot_distance_to_waypoints,
     calculate_and_save_path_lengths,
-    plot_trajectory,
+    plot_single_trajectory_or_comparison,
     calculate_trajectory_efficiency_error
 )
 
@@ -48,9 +48,7 @@ def analyze_data(bag_folder, config_path):
         plot_distance_to_waypoints(bag_folder, run_id, topics, waypoint_indices=[0, 1, 2, 3])
 
         # Plot trajectory for odometry and GPS
-        plot_trajectory(os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}", "lego_loam-odom.csv"), label="Odometry", run_id=run_id, bag_folder=bag_folder)
-        plot_trajectory(os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}", "gps_to_local.csv"), label="GPS", run_id=run_id, bag_folder=bag_folder)
-
+        plot_single_trajectory_or_comparison(bag_folder, run_id, topics, plot_estimated_trajectory=True, plot_gps_trajectory=True, offset_est=False, offset_gps=False)
 
 def main():
     parser = argparse.ArgumentParser(description="Run full data analysis pipeline.")
