@@ -9,6 +9,7 @@ import numpy as np
 from sklearn.metrics import mean_squared_error
 import glob
 from geopy.distance import geodesic
+import rospkg
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
@@ -204,20 +205,81 @@ def plot_trajectory(csv_path, label=None, color=None, offset_to_origin=False, ru
     else:
         raise ValueError("Unknown CSV structure. Expected 'poses' or 'pose.position.x/y' columns.")
     
+    x_vals = np.array(x_vals)
+    y_vals = np.array(y_vals)
 
     plt.plot(x_vals, y_vals, marker='o', markersize=3, linewidth=1, label=label, color=color)
-    plt.plot(x_vals.iloc[0], y_vals.iloc[0], marker='*', color='red', markersize=12)  # Start point in red
+    plt.plot(x_vals[0], y_vals[0], marker='*', color='red', markersize=12)  # Start point in red
+    
+def plot_single_trajectory_or_comparison(bag_folder, run_id, topics, plot_estimated_trajectory=False, plot_gps_trajectory=False, offset_est=False, offset_gps=False):
+    # Get the relevant topic names and their corresponding CSV file names from config
+    est_pos_topic = topics.get('estimated_position', {}).get('name')
+    waypoints_gps = load_gps_waypoints(topics)
+    if waypoints_gps is not None:
+        latitudes = [wp['lat'] for wp in waypoints_gps]
+        longitudes = [wp['lon'] for wp in waypoints_gps]
+        x_waypoints, y_waypoints = latlon_to_local_xy(latitudes=latitudes, longitudes=longitudes)
 
-    plot_folder = os.path.join(bag_folder, "plots")
-    os.makedirs(plot_folder, exist_ok=True)
+    # Define the base folder for the selected run
+    run_folder = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}")
+    
+    # Prepare to plot the graph
+    plt.figure(figsize=(10, 8))
 
-    # Save the plot in the 'plots' folder with a meaningful file name
-    plot_file_name = f"trajectory_run_{run_id}_{label}.png" if run_id is not None else "trajectory.png"
-    plot_path = os.path.join(plot_folder, plot_file_name)
-    plt.tight_layout()
-    plt.savefig(plot_path)
-    print(f"[INFO] Saved trajectory plot to {plot_path}")
-    plt.close()
+    # Plot real trajectory if selected
+    if plot_estimated_trajectory and est_pos_topic:
+        real_pos_file = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}", f"{est_pos_topic}.csv")
+        if os.path.isfile(real_pos_file):
+            if offset_est:
+                plot_trajectory(real_pos_file, label="Estimated Trajectory", color="blue", offset_to_origin=True)
+            else:
+                plot_trajectory(real_pos_file, label="Estimated Trajectory", color="blue", offset_to_origin=False)
+
+        else:
+            print(f"[WARNING] Estimated trajectory file for run {run_id} not found.")
+
+    # Plot planned trajectory if selected
+    if plot_gps_trajectory:
+        planned_trajectory_file = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}", "gps_to_local.csv")
+        if os.path.isfile(planned_trajectory_file):
+            if offset_gps:
+                plot_trajectory(planned_trajectory_file, label="GPS Trajectory", color="orange", offset_to_origin=True)
+            else:
+                plot_trajectory(planned_trajectory_file, label="GPS Trajectory", color="orange", offset_to_origin=False)
+
+        else:
+            print(f"[WARNING] GPS trajectory file for run {run_id} not found.")
+    if waypoints_gps is not None:
+        plt.plot(x_waypoints, y_waypoints, marker='*', color='gray', markersize=10)
+
+    # Customize the plot
+    plt.title(f"Trajectory Comparison for Run {run_id}")
+    plt.xlabel("X Position")
+    plt.ylabel("Y Position")
+    plt.grid(True)
+    plt.legend()
+
+    # Save and show the plot
+    if plot_estimated_trajectory==True and plot_gps_trajectory==True:
+        plt.tight_layout()
+        output_file = os.path.join(bag_folder, "plots", f"trajectory_comparison_run_{run_id}.png")
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)  # Make sure the plots directory exists
+        plt.savefig(output_file)
+        print(f"Saved trajectory comparison plot for run {run_id} to {output_file}")
+    elif plot_estimated_trajectory==True and plot_gps_trajectory==False:
+        plt.tight_layout()
+        output_file = os.path.join(bag_folder, "plots", f"estimated_trajectory_run_{run_id}.png")
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)  # Make sure the plots directory exists
+        plt.savefig(output_file)
+        print(f"Saved estimated trajectory plot for run {run_id} to {output_file}")
+    elif plot_estimated_trajectory==False and plot_gps_trajectory==True:
+        plt.tight_layout()
+        output_file = os.path.join(bag_folder, "plots", f"gps_trajectory_run_{run_id}.png")
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)  # Make sure the plots directory exists
+        plt.savefig(output_file)
+        print(f"Saved GPS plot for run {run_id} to {output_file}")
+    else:
+        print(f"[ERROR] No trajectory to be plotted!")
 
 def compute_rmse_per_axis(gt_df, est_df):
     return {
@@ -491,6 +553,27 @@ def calculate_length_drift_error(bag_folder, run_id, topics):
         }
     }
 
+def load_gps_waypoints(topics):
+    # --- Load waypoints YAML ---
+    waypoint_yaml_file = topics.get('waypoints_coords', {}).get('name')
+    if not waypoint_yaml_file:
+        print("[ERROR] 'waypoints_coords' topic missing or 'name' key not set.")
+        return None
+    
+    waypoint_path = rospkg.RosPack().get_path('global_route_system')+"/config/"+waypoint_yaml_file
+    if not os.path.isfile(waypoint_path):
+        print(f"[ERROR] Waypoint YAML not found: {waypoint_path}")
+        return None
+
+    with open(waypoint_path, 'r') as f:
+        waypoint_data = yaml.safe_load(f)
+
+    all_waypoints = waypoint_data.get('global_route', [])
+    if not all_waypoints:
+        print("[ERROR] 'global_route' not found or empty in YAML.")
+        return None
+    
+    return all_waypoints
 
 # Find the minimal distance between waypoints
 def minimal_path_length(bag_folder, run_id, topics):
@@ -498,23 +581,9 @@ def minimal_path_length(bag_folder, run_id, topics):
     Calculate total geodesic distance through a sequence of lat/lon waypoints from a YAML file.
     This is treated as the minimal path because waypoints are assumed ordered.
     """
-    # Extract the filename of the waypoint YAML from config
-    waypoint_yaml_file = topics.get('waypoints_coords', {}).get('name')
-    if not waypoint_yaml_file:
-        print("[ERROR] 'waypoints_coords' topic missing or 'file' key not specified in config.yaml.")
-        return None
-
-    waypoint_yaml_path = os.path.join(bag_folder, waypoint_yaml_file)
-
-    if not os.path.isfile(waypoint_yaml_path):
-        print(f"[ERROR] Waypoint YAML file not found at path: {waypoint_yaml_path}")
-        return None
-
-    # Load waypoints from YAML
-    with open(waypoint_yaml_path, 'r') as f:
-        waypoints_data = yaml.safe_load(f)
-
-    route = waypoints_data.get('global_route', [])
+    route = load_gps_waypoints(topics)
+    if route is None: 
+        return
     if len(route) < 2:
         print("[ERROR] Need at least two waypoints to compute a path.")
         return None
@@ -608,23 +677,8 @@ def plot_distance_to_waypoints(bag_folder, run_id, topics, waypoint_indices=None
 
     robot_positions = list(zip(gps_df[lat_col], gps_df[lon_col]))
 
-    # --- Load waypoints YAML ---
-    waypoint_yaml_file = topics.get('waypoints_coords', {}).get('name')
-    if not waypoint_yaml_file:
-        print("[ERROR] 'waypoints_coords' topic missing or 'name' key not set.")
-        return
-
-    waypoint_path = os.path.join(bag_folder, waypoint_yaml_file)
-    if not os.path.isfile(waypoint_path):
-        print(f"[ERROR] Waypoint YAML not found: {waypoint_path}")
-        return
-
-    with open(waypoint_path, 'r') as f:
-        waypoint_data = yaml.safe_load(f)
-
-    all_waypoints = waypoint_data.get('global_route', [])
-    if not all_waypoints:
-        print("[ERROR] 'global_route' not found or empty in YAML.")
+    all_waypoints = load_gps_waypoints(topics)
+    if all_waypoints is None: 
         return
 
     if waypoint_indices is None:
@@ -671,7 +725,7 @@ def plot_distance_to_waypoints(bag_folder, run_id, topics, waypoint_indices=None
     print(f"[INFO] Saved distance plot to {plot_file}")
     plt.close()
 
-def latlon_to_local_xy(latitudes, longitudes, ref_lat=None, ref_lon=None):
+def latlon_to_local_xy(latitudes, longitudes, ref_lat=None, ref_lon=None, rotation_deg=0.0):
     if ref_lat is None or ref_lon is None:
         ref_lat = latitudes[0]
         ref_lon = longitudes[0]
@@ -690,8 +744,17 @@ def latlon_to_local_xy(latitudes, longitudes, ref_lat=None, ref_lon=None):
 
         x.append(d_x)
         y.append(d_y)
+        
+    x = np.array(x)
+    y = np.array(y)
+    
+    if rotation_deg != 0.0:
+        angle_rad = np.deg2rad(rotation_deg)
+        x_rot = np.cos(angle_rad) * x - np.sin(angle_rad) * y
+        y_rot = np.sin(angle_rad) * x + np.cos(angle_rad) * y
+        return x_rot, y_rot
 
-    return np.array(x), np.array(y)
+    return x, y
 
 def synchronize_data(est_df, gps_df):
     est_df = est_df.sort_values('Time').reset_index(drop=True)
@@ -864,46 +927,14 @@ def main():
     bag_mapping = get_sorted_bag_mapping(bag_folder)
 
     # Convert bags to CSV using mapping
-    # convert_bags_to_csv(bag_folder, bag_mapping, topics)
+    convert_bags_to_csv(bag_folder, bag_mapping, topics)
 
     # Use number of runs from mapping
     num_bags = len(bag_mapping)
 
-    # organize_csv_per_topic(bag_folder, num_bags, topics)
-
-    # calculate_and_save_all_errors(
-    #      bag_folder,
-    #      run_ids=[0,1,2],
-    #      topics=topics,
-    #      position_error=True,
-    #      length_drift_error=True
-    #  )
-
-    # path_length = calculate_gps_path_length(bag_folder, run_id=0, topics=topics)
-    # print(path_length)
-
-    # odom_length = calculate_odometry_path_length(bag_folder, run_id=0, topics=topics)
-    # print(odom_length)
-
-    # print(path_length - odom_length)
-
     calculate_length_drift_error(bag_folder, 0, topics=topics)
 
-    # minimal_path_length(bag_folder, 0, topics)
-
     calculate_trajectory_efficiency_error(bag_folder, run_id=0, topics=topics)
-
-    # print(eff_error)
-    
-    # plot_distance_to_waypoints(bag_folder, run_id=0, topics=topics, waypoint_indices=[0, 1,2, 3])
-
-    # calculate_position_error_gps_vs_odometry(bag_folder, 0, topics)
-
-    # run_id = 0
-    # calculate_and_save_path_lengths(bag_folder, run_id, topics)
-
-    plot_trajectory(os.path.join(bag_folder, "csv_files", "per_run", "run_0", "lego_loam-odom.csv"), label="Odometry", run_id=0, bag_folder=bag_folder)
-    plot_trajectory(os.path.join(bag_folder, "csv_files", "per_run", "run_0", "gps_to_local.csv"), label="GPS", run_id=0, bag_folder=bag_folder)
 
 if __name__ == "__main__":
     main()
