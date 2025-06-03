@@ -214,7 +214,7 @@ def plot_trajectory(csv_path, label=None, color=None, offset_to_origin=False, ru
 def plot_single_trajectory_or_comparison(bag_folder, run_id, topics, plot_estimated_trajectory=False, plot_gps_trajectory=False, offset_est=False, offset_gps=False):
     # Get the relevant topic names and their corresponding CSV file names from config
     est_pos_topic = topics.get('estimated_position', {}).get('name')
-    waypoints_gps = load_gps_waypoints(topics)
+    waypoints_gps = load_gps_waypoints(bag_folder, topics)
     if waypoints_gps is not None:
         latitudes = [wp['lat'] for wp in waypoints_gps]
         longitudes = [wp['lon'] for wp in waypoints_gps]
@@ -556,17 +556,24 @@ def calculate_length_drift_error(bag_folder, run_id, topics):
         }
     }
 
-def load_gps_waypoints(topics):
+def load_gps_waypoints(bag_folder, topics):
     # --- Load waypoints YAML ---
     waypoint_yaml_file = topics.get('waypoints_coords', {}).get('name')
     if not waypoint_yaml_file:
         print("[ERROR] 'waypoints_coords' name missing or 'name' key not set.")
         return None
     
-    waypoint_path = rospkg.RosPack().get_path('global_route_system')+"/config/"+waypoint_yaml_file
-    if not os.path.isfile(waypoint_path):
-        print(f"[ERROR] Waypoint YAML not found: {waypoint_path}")
-        return None
+    try:
+        pkg_path = rospkg.RosPack().get_path('global_route_system')
+        waypoint_path = os.path.join(pkg_path, "config", waypoint_yaml_file)
+        if not os.path.isfile(waypoint_path):
+            print(f"[ERROR] Waypoint YAML not found: {waypoint_path}")
+            return None
+    except:
+        waypoint_path = os.path.join(bag_folder, waypoint_yaml_file)
+        if not os.path.isfile(waypoint_path):
+            print(f"[ERROR] Waypoint YAML not found: {waypoint_path}")
+            return None
 
     with open(waypoint_path, 'r') as f:
         waypoint_data = yaml.safe_load(f)
@@ -584,7 +591,7 @@ def minimal_path_length(bag_folder, run_id, topics):
     Calculate total geodesic distance through a sequence of lat/lon waypoints from a YAML file.
     This is treated as the minimal path because waypoints are assumed ordered.
     """
-    route = load_gps_waypoints(topics)
+    route = load_gps_waypoints(bag_folder, topics)
     if route is None: 
         return
     if len(route) < 2:
@@ -681,7 +688,7 @@ def plot_distance_to_waypoints(bag_folder, run_id, topics, waypoint_indices=None
 
     robot_positions = list(zip(gps_df[lat_col], gps_df[lon_col]))
 
-    all_waypoints = load_gps_waypoints(topics)
+    all_waypoints = load_gps_waypoints(bag_folder, topics)
     if all_waypoints is None: 
         return
 
