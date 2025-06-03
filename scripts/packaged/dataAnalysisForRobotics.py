@@ -53,8 +53,7 @@ def convert_bags_to_csv(bag_folder, bag_mapping, topics):
     os.makedirs(base_output_folder, exist_ok=True)
 
     plan_topic = topics.get('trajectory_plan')
-    clean_plan = plan_topic and plan_topic['type'] == "nav_msgs/Path"
-    plan_csv_name = plan_topic['csv_file'] if plan_topic else None
+    plan_csv_name = plan_topic['name'].lstrip("/").replace("/", "-")+".csv" if plan_topic else None
 
     for run_label, bag_path in bag_mapping.items():
         if not os.path.isfile(bag_path):
@@ -75,7 +74,7 @@ def convert_bags_to_csv(bag_folder, bag_mapping, topics):
             shutil.move(csv_path, dest_path)
             print(f"[INFO] Moved CSV to: {dest_path}")
 
-            if clean_plan and os.path.basename(csv_path) == plan_csv_name:
+            if plan_topic and os.path.basename(csv_path) == plan_csv_name:
                 print(f"[INFO] Cleaning trajectory plan CSV for {run_label}")
                 extract_poses_from_csv(dest_path, dest_path)
 
@@ -136,10 +135,11 @@ def organize_csv_per_topic(bag_folder, num_bags, topics):
 
     # Go through only topics defined in config file
     for key, topic in topics.items():
-        topic_csv = topic.get('csv_file')
-        if topic_csv is None:
+        topic_name = topic.get('name')
+        if topic_name is None:
             continue  # skip if csv_file not defined
-
+        
+        topic_csv = topic_name.lstrip("/").replace("/", "-")+".csv"
         topic_folder = os.path.splitext(topic_csv)[0]  # remove .csv
         topic_dest = os.path.join(destination_root, topic_folder)
         os.makedirs(topic_dest, exist_ok=True)
@@ -228,7 +228,8 @@ def plot_single_trajectory_or_comparison(bag_folder, run_id, topics, plot_estima
 
     # Plot real trajectory if selected
     if plot_estimated_trajectory and est_pos_topic:
-        real_pos_file = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}", f"{est_pos_topic}.csv")
+        est_pos_file = est_pos_topic.lstrip("/").replace("/", "-")
+        real_pos_file = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}", f"{est_pos_file}.csv")
         if os.path.isfile(real_pos_file):
             if offset_est:
                 plot_trajectory(real_pos_file, label="Estimated Trajectory", color="blue", offset_to_origin=True)
@@ -413,12 +414,13 @@ def interpolate_to_match(reference_df, target_df, columns):
 
 def calculate_gps_path_length(bag_folder, run_id, topics):
     gps_topic = topics.get('gps_plan', {})
-    gps_csv_file = gps_topic.get('csv_file')
+    gps_topic_name = gps_topic.get('name')
 
-    if not gps_csv_file:
+    if not gps_topic_name:
         print("[ERROR] 'gps_plan' topic missing or does not specify a 'csv_file' in config.yaml.")
         return None
 
+    gps_csv_file = gps_topic_name.lstrip("/").replace("/", "-")+".csv"
     gps_csv_path = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}", gps_csv_file)
 
     if not os.path.isfile(gps_csv_path):
@@ -463,12 +465,13 @@ def calculate_gps_path_length(bag_folder, run_id, topics):
 
 def calculate_odometry_path_length(bag_folder, run_id, topics):
     est_topic = topics.get('estimated_position', {})
-    est_csv_file = est_topic.get('csv_file')
+    est_topic_name = est_topic.get('name')
 
-    if not est_csv_file:
+    if not est_topic_name:
         print("[ERROR] 'estimated_position' topic missing or does not specify a 'csv_file' in config.yaml.")
         return None
 
+    est_csv_file = est_topic_name.lstrip("/").replace("/", "-")+".csv"
     est_csv_path = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}", est_csv_file)
 
     if not os.path.isfile(est_csv_path):
@@ -557,7 +560,7 @@ def load_gps_waypoints(topics):
     # --- Load waypoints YAML ---
     waypoint_yaml_file = topics.get('waypoints_coords', {}).get('name')
     if not waypoint_yaml_file:
-        print("[ERROR] 'waypoints_coords' topic missing or 'name' key not set.")
+        print("[ERROR] 'waypoints_coords' name missing or 'name' key not set.")
         return None
     
     waypoint_path = rospkg.RosPack().get_path('global_route_system')+"/config/"+waypoint_yaml_file
@@ -657,11 +660,12 @@ def plot_distance_to_waypoints(bag_folder, run_id, topics, waypoint_indices=None
 
     # --- Load robot GPS positions ---
     gps_topic = topics.get('gps_plan', {})
-    gps_csv_file = gps_topic.get('csv_file')
-    if not gps_csv_file:
+    gps_topic_name = gps_topic.get('name')
+    if not gps_topic_name:
         print("[ERROR] 'gps_plan' topic missing or no 'csv_file' in config.yaml.")
         return
 
+    gps_csv_file = gps_topic_name.lstrip("/").replace("/", "-")+".csv"
     gps_csv_path = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}", gps_csv_file)
     if not os.path.isfile(gps_csv_path):
         print(f"[ERROR] GPS CSV file not found: {gps_csv_path}")
@@ -777,13 +781,16 @@ def calculate_position_error_gps_vs_odometry(bag_folder, run_id, topics):
     gps_topic = topics.get('gps_plan', {})
     est_topic = topics.get('estimated_position', {})
 
-    gps_csv_file = gps_topic.get('csv_file')
-    est_csv_file = est_topic.get('csv_file')
+    gps_topic_name = gps_topic.get('name')
+    est_topic_name = est_topic.get('name')
 
-    if not gps_csv_file or not est_csv_file:
+    if not gps_topic_name or not est_topic_name:
         print("[ERROR] Missing gps_plan or estimated_position csv_file in config.")
         return None
 
+    gps_csv_file = gps_topic_name.lstrip("/").replace("/", "-")+".csv"
+    est_csv_file = est_topic_name.lstrip("/").replace("/", "-")+".csv"
+    
     run_folder = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}")
     gps_path = os.path.join(run_folder, gps_csv_file)
     est_path = os.path.join(run_folder, est_csv_file)
