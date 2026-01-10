@@ -210,6 +210,7 @@ def plot_trajectory(csv_path, label=None, color=None, offset_to_origin=False, ru
 
     plt.plot(x_vals, y_vals, marker='o', markersize=3, linewidth=1, label=label, color=color)
     plt.plot(x_vals[0], y_vals[0], marker='*', color='red', markersize=12)  # Start point in red
+    plt.axis('equal')
     
 def plot_single_trajectory_or_comparison(bag_folder, run_id, topics, plot_estimated_trajectory=False, plot_gps_trajectory=False, offset_est=False, offset_gps=False):
     # Get the relevant topic names and their corresponding CSV file names from config
@@ -952,5 +953,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
