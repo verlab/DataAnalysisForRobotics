@@ -1,9 +1,9 @@
 topics:
   estimated_position:
-    name: "/lego_loam/odom"
+    name: "/odometry/global"
   trajectory_plan:
-    name: "/move_base/DWAPlannerROS/global_plan"
+    name: "/move_base/TEBPlannerROS/global_plan"
   gps_plan:
-    name: "/reach/fix"
+    name: "/gnss_left/fix"
   waypoints_coords:
-    name: "simulation_demo.yaml"
+    name: "arocs_route.yaml"
