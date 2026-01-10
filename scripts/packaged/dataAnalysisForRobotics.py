@@ -252,7 +252,7 @@ def plot_single_trajectory_or_comparison(bag_folder, run_id, topics, plot_estima
         else:
             print(f"[WARNING] GPS trajectory file for run {run_id} not found.")
     if waypoints_gps is not None:
-        plt.plot(x_waypoints, y_waypoints, marker='*', color='gray', markersize=10)
+        plt.plot(x_waypoints, y_waypoints, marker='*', color='gray', markersize=10, label="Waypoints")
 
     # Customize the plot
     plt.title(f"Trajectory Comparison for Run {run_id}")
