@@ -67,6 +67,8 @@ def convert_bags_to_csv(bag_folder, bag_mapping, topics):
         os.makedirs(run_folder, exist_ok=True)
 
         for topic in b.topics:
+            if topic not in [t.get('name') for t in topics.values()]:
+                continue  # Skip topics not defined in config
             csv_path = b.message_by_topic(topic)
             print(f"[INFO] Saved CSV in original folder: {csv_path}")
 
