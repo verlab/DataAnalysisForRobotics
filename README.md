@@ -2,12 +2,6 @@
 
 This repository contains a set of scripts and utilities to process and analyze ROS bag files. It converts ROS bags into CSV format, organizes data per topic, generates plots for velocities and trajectories, and computes errors for analysis.
 
-<p align="center">
-  <img src="./images/mean_linear_real_vel.png" width="200" height="200" alt="Image 1"/>
-  <img src="./images/real_velocities_run_0.png" width="200" height="200" alt="Image 2"/>
-  <img src="./images/True_vs_Planned_Path_run_10.png" width="200" height="200" alt="Image 3"/>
-</p>
-
 ## Table of Contents
 
 - [Overview](#data-analysis-for-robotics-simulations)
@@ -35,11 +29,12 @@ This repository contains a set of scripts and utilities to process and analyze R
 - `scikit-learn`
 - `re`
 - `glob`
+- `geopy`
 
 Install dependencies with:
 
 ```
-pip install bagpy pandas matplotlib pyyaml numpy scikit-learn glob2
+pip install bagpy pandas matplotlib pyyaml numpy scikit-learn glob2 geopy
 ```
 
 
@@ -76,19 +71,13 @@ Example `config.yaml` structure:
 ```
 topics:
   estimated_position:
-    name: "lego_loam-odom"
-    type: "geometry_msgs/PoseStamped"
-    csv_file: "lego_loam-odom.csv"
+    name: "/odometry/global"
   trajectory_plan:
-    name: "move_base-DWAPlannerROS-global_plan"
-    type: "nav_msgs/Path"
-    csv_file: "move_base-DWAPlannerROS-global_plan.csv" # it will be the name of the topic.csv
+    name: "/move_base/TEBPlannerROS/global_plan"
   gps_plan:
-    name: "reach-fix"
-    type: "gps/points"
-    csv_file: "reach-fix.csv"
+    name: "/gnss_left/fix"
   waypoints_coords:
-    name: "simulation_demo.yaml"
+    name: "demo_baylands.yaml"
 ```
 
 ### Command Line Usage
@@ -111,7 +100,8 @@ To use it as a library, there are some obligatory commands, the script must be e
 2. **get_sorted_bag_mapping**
 3. **convert_bags_to_csv**
 4. **organize_csv_per_topic**
-5. missing functions
+5. **calculate errors**
+6. **plot functions**
 
 ## Errors and Plots
 
@@ -169,12 +159,13 @@ All errors are saved as CSV files in the `errors/` directory and aggregated for 
 Plots are automatically generated from CSV data and saved in the `plots/` folder. These help visually assess the system's behavior and compare it to expectations.
 
 - **Trajectory Plots:**
-  - 2D trajectory visualization (X vs. Y) of both real and planned paths.
+  - 2D trajectory comparision (Ground Truth GPS vs. estimated odometry) of executed paths.
   - Optional offset to origin for alignment and easier visual comparison.
 
-Each plot is saved as a PNG image and named accordingly (e.g., `real_velocities_run_0.png`, `trajectory_comparison_run_1.png`, etc.).
+- **Distance to waypoints:**
+  - Distance (in meters) until reach each of the fisrt three waypoints.
 
-### missing plots of distance x waypoint
+Each plot is saved as a PNG image and named accordingly (e.g., `distance_to_waypoints_run_0.png`, `trajectory_comparison_run_1.png`, etc.).
 
 ## Execution Flow Example
 
@@ -220,7 +211,53 @@ organize_csv_per_topic(bag_folder, num_bags, topics)
 
 *Creates `csv_files/per_topic/topic_name/` folders for analysis.*
 
-### missing functions
+### 5.) Calculate and Save Errors
+
+Iterate through each run to calculate position errors (GPS vs. Odometry) and length drift, saving the results to CSV files within the errors directory.
+
+```python
+for run_id in run_ids:
+  # Position Errors
+  pos_errors = calculate_position_error_gps_vs_odometry(bag_folder, run_id, topics)
+  save_errors_to_csv(pos_errors, bag_folder, run_id)
+  
+  # Drift Errors
+  drift_errors = calculate_length_drift_error(bag_folder, run_id, topics)
+  save_errors_to_csv(drift_errors, bag_folder, run_id, label="length_drift")
+```
+
+*Generates error reports in `errors/run_X_...csv` for quantitative analysis.*
+
+### 6.) Compute Path Metrics
+
+Calculate total path lengths and trajectory efficiency to evaluate the robot's performance consistency.
+
+```python
+calculate_and_save_path_lengths(bag_folder, run_id, topics)
+calculate_trajectory_efficiency_error(bag_folder, run_id, topics)
+```
+
+*Computes and saves metrics regarding the distance traveled and path efficiency.*
+
+### 7.) Generate Plots
+
+Create visualizations for distance to specific waypoints and compare the estimated odometry trajectory against the GPS ground truth.
+
+```python
+# Plot distance to waypoints
+plot_distance_to_waypoints(bag_folder, run_id, topics, waypoint_indices=[0, 1, 2, 3])
+
+# Plot trajectory comparison
+plot_single_trajectory_or_comparison(
+    bag_folder, run_id, topics, 
+    plot_estimated_trajectory=True, 
+    plot_gps_trajectory=True, 
+    offset_est=False, 
+    offset_gps=False
+)
+```
+
+*Saves visual plots in the `plots/` directory to facilitate manual inspection of the robot's behavior.*
 
 ## Available Functions
 
@@ -268,7 +305,57 @@ Scans for `.bag` files in the folder and returns a dictionary mapping `run_X` fi
 
 ### Plotting
 
+- **`plot_single_trajectory_or_comparison(bag_folder, run_id, topics, ...)`** Generates a 2D plot comparing the Estimated Trajectory (Odometry) against the GPS Trajectory (Ground Truth). It can also plot the waypoints. It supports offsetting trajectories to the origin (0,0) for easier visual comparison of shapes.  
+  **Usage:** 
+  ```python
+  plot_single_trajectory_or_comparison(
+      bag_folder, 
+      run_id=0, 
+      topics=topics, 
+      plot_estimated_trajectory=True, 
+      plot_gps_trajectory=True,
+      offset_est=False,
+      offset_gps=False
+  )
+  ```
+
+- **`plot_distance_to_waypoints(bag_folder, run_id, topics, waypoint_indices)`** Plots the Euclidean distance from the robot to specific waypoints over time. It visually marks the exact timestamp when the robot arrived (distance < threshold) at a specific waypoint.  
+  **Usage:** 
+  ```python
+  # Plot distance to the first 4 waypoints
+  plot_distance_to_waypoints(bag_folder, 0, topics, waypoint_indices=[0, 1, 2, 3])
+  ```
+
 ### Error Computation
+
+- **`calculate_position_error_gps_vs_odometry(bag_folder, run_id, topics)`** Computes the Root Mean Square Error (RMSE) and Mean Absolute Error (MAE) between the Estimated Odometry and the GPS Ground Truth.  
+  *Note: This function automatically synchronizes the two time-series (via interpolation) and converts GPS Lat/Lon to local X/Y coordinates before comparison.* **Usage:** 
+  ```python
+  errors = calculate_position_error_gps_vs_odometry(bag_folder, 0, topics)
+  # Returns: {'rmse': {'x': ..., 'y': ...}, 'mae': {...}}
+  # Saves to: errors/errors_position_run_0.csv
+  ```
+
+- **`calculate_length_drift_error(bag_folder, run_id, topics)`** Calculates the difference in **total path length** measured by Odometry versus GPS. This is useful for identifying odometry scaling issues (e.g., wheel radius calibration).  
+  **Usage:** 
+  ```python
+  calculate_length_drift_error(bag_folder, 0, topics)
+  # Saves to: errors/length_drift_error_run_0.csv
+  ```
+
+- **`calculate_trajectory_efficiency_error(bag_folder, run_id, topics)`** Evaluates how efficient the robot's path was by comparing the **GPS path length** (actual distance traveled) against the **Minimal Waypoint path length** (ideal straight lines between waypoints).  
+  **Usage:** 
+  ```python
+  calculate_trajectory_efficiency_error(bag_folder, 0, topics)
+  # Saves to: errors/trajectory_efficiency_error_run_0.csv
+  ```
+
+- **`calculate_and_save_path_lengths(bag_folder, run_id, topics)`** A helper function that computes Odometry length, GPS length, and Minimal length simultaneously and saves them to a consolidated CSV for general comparison.  
+  **Usage:** 
+  ```python
+  calculate_and_save_path_lengths(bag_folder, 0, topics)
+  # Saves to: path_lengths/path_lengths_run_0.csv
+  ```
 
 ## Notes and Warnings
 

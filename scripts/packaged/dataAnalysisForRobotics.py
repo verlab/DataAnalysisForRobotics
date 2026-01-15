@@ -67,6 +67,8 @@ def convert_bags_to_csv(bag_folder, bag_mapping, topics):
         os.makedirs(run_folder, exist_ok=True)
 
         for topic in b.topics:
+            if topic not in [t.get('name') for t in topics.values()]:
+                continue  # Skip topics not defined in config
             csv_path = b.message_by_topic(topic)
             print(f"[INFO] Saved CSV in original folder: {csv_path}")
 
@@ -210,15 +212,16 @@ def plot_trajectory(csv_path, label=None, color=None, offset_to_origin=False, ru
 
     plt.plot(x_vals, y_vals, marker='o', markersize=3, linewidth=1, label=label, color=color)
     plt.plot(x_vals[0], y_vals[0], marker='*', color='red', markersize=12)  # Start point in red
+    plt.axis('equal')
     
-def plot_single_trajectory_or_comparison(bag_folder, run_id, topics, plot_estimated_trajectory=False, plot_gps_trajectory=False, offset_est=False, offset_gps=False):
+def plot_single_trajectory_or_comparison(bag_folder, run_id, topics, plot_estimated_trajectory=False, plot_gps_trajectory=False, offset_est=False, offset_gps=False, offset_angle=0.0):
     # Get the relevant topic names and their corresponding CSV file names from config
     est_pos_topic = topics.get('estimated_position', {}).get('name')
     waypoints_gps = load_gps_waypoints(bag_folder, topics)
     if waypoints_gps is not None:
         latitudes = [wp['lat'] for wp in waypoints_gps]
         longitudes = [wp['lon'] for wp in waypoints_gps]
-        x_waypoints, y_waypoints = latlon_to_local_xy(latitudes=latitudes, longitudes=longitudes)
+        x_waypoints, y_waypoints = latlon_to_local_xy(latitudes=latitudes, longitudes=longitudes, rotation_deg=offset_angle)
 
     # Define the base folder for the selected run
     run_folder = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}")
@@ -251,7 +254,7 @@ def plot_single_trajectory_or_comparison(bag_folder, run_id, topics, plot_estima
         else:
             print(f"[WARNING] GPS trajectory file for run {run_id} not found.")
     if waypoints_gps is not None:
-        plt.plot(x_waypoints, y_waypoints, marker='*', color='gray', markersize=10)
+        plt.plot(x_waypoints, y_waypoints, marker='*', color='gray', markersize=10, label="Waypoints")
 
     # Customize the plot
     plt.title(f"Trajectory Comparison for Run {run_id}")
@@ -349,7 +352,7 @@ def save_errors_to_csv(errors_dict, bag_folder, run_id, label="position"):
 
 def calculate_and_save_all_errors(
     bag_folder, run_ids, topics,
-    position_error=True, length_drift_error=True
+    position_error=True, length_drift_error=True, align_heading=False
 ):
     all_position_errors = []
     all_drift_errors = []
@@ -360,7 +363,7 @@ def calculate_and_save_all_errors(
         # --- GPS vs Odometry Position Errors ---
         if position_error:
             pos_errors = calculate_position_error_gps_vs_odometry(
-                bag_folder, run_id, topics
+                bag_folder, run_id, topics, align_heading=align_heading
             )
             if pos_errors:
                 flat_pos = {'run': run_id}
@@ -500,8 +503,8 @@ def calculate_odometry_path_length(bag_folder, run_id, topics):
         print(f"[ERROR] Could not find position x/y/z columns in {est_csv_file}. Found columns: {list(df.columns)}")
         return None
 
-    x, y, z = df[pos_cols[0]], df[pos_cols[1]], df[pos_cols[2]]
-    positions = np.stack([x, y, z], axis=1)
+    x, y = df[pos_cols[0]], df[pos_cols[1]]
+    positions = np.stack([x, y], axis=1)
 
     # Compute total Euclidean distance
     diffs = np.diff(positions, axis=0)
@@ -784,7 +787,42 @@ def synchronize_data(est_df, gps_df):
 
     return est_sync, gps_sync
 
-def calculate_position_error_gps_vs_odometry(bag_folder, run_id, topics):
+def calculate_alignment_angle(est_sync, gps_sync):
+    """
+    Calcula o ângulo de rotação (em graus) necessário para alinhar a 
+    trajetória estimada (est) com a trajetória GPS (ref) usando SVD.
+    """
+    P = est_sync[['x', 'y']].values.T
+    Q = gps_sync[['x', 'y']].values.T
+
+    centroid_P = np.mean(P, axis=1, keepdims=True)
+    centroid_Q = np.mean(Q, axis=1, keepdims=True)
+
+    P_centered = P - centroid_P
+    Q_centered = Q - centroid_Q
+
+    # Matriz de Covariância H
+    H = P_centered @ Q_centered.T
+
+    # SVD para encontrar a Rotação
+    U, S, Vt = np.linalg.svd(H)
+    
+    # Matriz de Rotação R = V * U.T
+    R = Vt.T @ U.T
+
+    # Correção de reflexão (caso determinante seja -1)
+    if np.linalg.det(R) < 0:
+        Vt[1, :] *= -1
+        R = Vt.T @ U.T
+
+    # Extrair o ângulo da matriz de rotação
+    # R = [[cos, -sin], [sin, cos]]
+    angle_rad = np.arctan2(R[1, 0], R[0, 0])
+    angle_deg = np.degrees(angle_rad)
+
+    return -angle_deg
+
+def calculate_position_error_gps_vs_odometry(bag_folder, run_id, topics, align_heading=False):
     gps_topic = topics.get('gps_plan', {})
     est_topic = topics.get('estimated_position', {})
 
@@ -851,35 +889,56 @@ def calculate_position_error_gps_vs_odometry(bag_folder, run_id, topics):
     else:
         est_local['Time'] = np.arange(len(est_local))
 
-    gps_x, gps_y = latlon_to_local_xy(gps_df[lat_col].values, gps_df[lon_col].values)
+    gps_x_raw, gps_y_raw = latlon_to_local_xy(gps_df[lat_col].values, gps_df[lon_col].values)
 
     if 'Time' in gps_df.columns:
-        gps_local = pd.DataFrame({'Time': gps_df['Time'].values, 'x': gps_x, 'y': gps_y})
+        gps_local_temp = pd.DataFrame({'Time': gps_df['Time'].values, 'x': gps_x_raw, 'y': gps_y_raw})
     else:
-        gps_local = pd.DataFrame({'Time': np.arange(len(gps_df)), 'x': gps_x, 'y': gps_y})
+        gps_local_temp = pd.DataFrame({'Time': np.arange(len(gps_df)), 'x': gps_x_raw, 'y': gps_y_raw})
 
+    est_sync_temp, gps_sync_temp = synchronize_data(est_local[['Time', 'x', 'y']], gps_local_temp)
+    
+    offset_angle = calculate_alignment_angle(est_sync_temp, gps_sync_temp)
+    
+    print(f"[INFO] Detected Heading Offset: {offset_angle:.2f} degrees")
+    print(f"       (Positive means Odometry is rotated CCW relative to GPS)")
+    
+    if align_heading:
+        print(f"[INFO] Aligning Odometry to GPS heading by rotating {offset_angle:.2f} degrees.")
+    else:
+        offset_angle = 0.0
+        print(f"[INFO] Not aligning headings; using raw GPS positions.")
+        
+    gps_x_aligned, gps_y_aligned = latlon_to_local_xy(gps_df[lat_col].values, gps_df[lon_col].values, rotation_deg=offset_angle)
+    
+    if 'Time' in gps_df.columns:
+        gps_local = pd.DataFrame({'Time': gps_df['Time'].values, 'x': gps_x_aligned, 'y': gps_y_aligned})
+    else:
+        gps_local = pd.DataFrame({'Time': np.arange(len(gps_df)), 'x': gps_x_aligned, 'y': gps_y_aligned})
+    
     # Salvar as posições locais do GPS em csv_files/per_run/run_{run_id}/gps_to_local.csv
     gps_local_csv_path = os.path.join(run_folder, "gps_to_local.csv")
     gps_local.to_csv(gps_local_csv_path, index=False)
     print(f"[INFO] Saved GPS local positions to {gps_local_csv_path}")
-
+    
     est_sync, gps_sync = synchronize_data(est_local[['Time', 'x', 'y']], gps_local)
 
     diffs = est_sync[['x', 'y']].values - gps_sync[['x', 'y']].values
 
     rmse = np.sqrt(np.mean(diffs**2, axis=0))
+    rmse_total = np.sqrt(rmse[0]**2 + rmse[1]**2)
     mae = np.mean(np.abs(diffs), axis=0)
+    mae_total = np.sqrt(mae[0]**2 + mae[1]**2)
 
     result = {
-        'rmse': {'x': rmse[0], 'y': rmse[1]},
-        'mae': {'x': mae[0], 'y': mae[1]}
+        'rmse': {'x': rmse[0], 'y': rmse[1], 'total': rmse_total},
+        'mae': {'x': mae[0], 'y': mae[1], 'total': mae_total},
+        'offset_angle': {'degrees': offset_angle}
     }
 
     print(f"[INFO] Position Errors between Odometry and GPS for run_{run_id}:")
-    print(f"       RMSE: x={rmse[0]:.3f} m, y={rmse[1]:.3f} m")
-    print(f"       MAE : x={mae[0]:.3f} m, y={mae[1]:.3f} m")
-
-    save_errors_to_csv(result, bag_folder, run_id, label="position")
+    print(f"       RMSE: x={rmse[0]:.3f} m, y={rmse[1]:.3f} m, Total={rmse_total:.3f} m")
+    print(f"       MAE : x={mae[0]:.3f} m, y={mae[1]:.3f} m, Total={mae_total:.3f} m")
 
     return result
 
@@ -928,6 +987,123 @@ def calculate_and_save_path_lengths(bag_folder, run_id, topics):
 
     print(f"[INFO] Saved path lengths for run_{run_id} to {out_file}")
 
+def get_closest_point_on_segment(p, a, b):
+    ap = p - a
+    ab = b - a
+    
+    ab_sq = np.dot(ab, ab)
+    
+    if ab_sq == 0:
+        return a
+    
+    t = np.dot(ap, ab) / ab_sq
+    t = np.clip(t, 0.0, 1.0)
+    
+    closest = a + t * ab
+    return closest
+
+def calculate_path_tracking_error(bag_folder, run_id, topics, offset_angle=0.0):
+    """
+    Calcula o erro de rastreamento (Path Tracking Error) da odometria em relação 
+    à rota ideal definida pelos waypoints no arquivo YAML.
+    Gera erros em X, Y e Distância Euclidiana (Total).
+    """
+    est_topic = topics.get('estimated_position', {})
+    est_topic_name = est_topic.get('name')
+    if not est_topic_name:
+        print("[ERROR] 'estimated_position' not defined in config.")
+        return None
+
+    est_csv_file = est_topic_name.lstrip("/").replace("/", "-") + ".csv"
+    run_folder = os.path.join(bag_folder, "csv_files", "per_run", f"run_{run_id}")
+    est_path = os.path.join(run_folder, est_csv_file)
+
+    if not os.path.isfile(est_path):
+        print(f"[ERROR] Odometry CSV not found: {est_path}")
+        return None
+
+    est_df = pd.read_csv(est_path)
+    est_df.columns = est_df.columns.str.strip()
+
+    pos_cols = None
+    candidates = [
+        ('pose.position.x', 'pose.position.y'),
+        ('pose.pose.position.x', 'pose.pose.position.y'),
+        ('position.x', 'position.y'),
+        ('x', 'y'),
+    ]
+    for cols in candidates:
+        if all(c in est_df.columns for c in cols):
+            pos_cols = cols
+            break
+            
+    if not pos_cols:
+        print("[ERROR] Could not find position columns in odometry CSV.")
+        return None
+
+    odom_xy = est_df[list(pos_cols)].values  # Shape (N, 2)
+
+    waypoints = load_gps_waypoints(bag_folder, topics)
+    if not waypoints or len(waypoints) < 2:
+        print("[ERROR] Waypoints not found or insufficient to form a path.")
+        return None
+
+    lats = [wp['lat'] for wp in waypoints]
+    lons = [wp['lon'] for wp in waypoints]
+    
+    wp_x, wp_y = latlon_to_local_xy(lats, lons, rotation_deg=offset_angle)
+    path_points = np.stack([wp_x, wp_y], axis=1)
+
+    errors_x = []
+    errors_y = []
+    errors_total = []
+
+    for point in odom_xy:
+        min_dist = float('inf')
+        best_diff_x = 0.0
+        best_diff_y = 0.0
+
+        for i in range(len(path_points) - 1):
+            A = path_points[i]
+            B = path_points[i+1]
+            
+            closest_pt = get_closest_point_on_segment(point, A, B)
+            
+            diff_x = point[0] - closest_pt[0]
+            diff_y = point[1] - closest_pt[1]
+            dist = np.sqrt(diff_x**2 + diff_y**2)
+
+            if dist < min_dist:
+                min_dist = dist
+                best_diff_x = diff_x
+                best_diff_y = diff_y
+
+        errors_x.append(best_diff_x)
+        errors_y.append(best_diff_y)
+        errors_total.append(min_dist)
+
+    errors_x = np.array(errors_x)
+    errors_y = np.array(errors_y)
+    errors_total = np.array(errors_total)
+
+    rmse_x = np.sqrt(np.mean(errors_x**2))
+    rmse_y = np.sqrt(np.mean(errors_y**2))
+    rmse_total = np.sqrt(np.mean(errors_total**2))
+
+    mae_x = np.mean(np.abs(errors_x))
+    mae_y = np.mean(np.abs(errors_y))
+    mae_total = np.mean(errors_total)
+
+    print(f"[INFO] Path Tracking Error for run_{run_id}:")
+    print(f"       RMSE: x={rmse_x:.3f} m, y={rmse_y:.3f} m, Total={rmse_total:.3f} m")
+    print(f"       MAE : x={mae_x:.3f} m, y={mae_y:.3f} m, Total={mae_total:.3f} m")
+
+    result = {
+        'rmse': {'x': rmse_x, 'y': rmse_y, 'total': rmse_total},
+        'mae': {'x': mae_x, 'y': mae_y, 'total': mae_total}
+    }
+
+    return result
 
 def main():
     bag_folder = "/home/manuela/Documents/VerLab/dataAnalysisForRobotics/lib_tests/lib_script_test"
@@ -952,5 +1128,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
