@@ -8,6 +8,7 @@ from dataAnalysisForRobotics import (
     save_errors_to_csv,
     calculate_length_drift_error,
     calculate_position_error_gps_vs_odometry,
+    calculate_path_tracking_error,
     plot_distance_to_waypoints,
     calculate_and_save_path_lengths,
     plot_single_trajectory_or_comparison,
@@ -34,8 +35,11 @@ def analyze_data(bag_folder, config_path):
     
     # Calculate and save errors for each run
     for run_id in run_ids:
-        pos_errors = calculate_position_error_gps_vs_odometry(bag_folder, run_id, topics)
-        save_errors_to_csv(pos_errors, bag_folder, run_id)
+        pos_errors = calculate_position_error_gps_vs_odometry(bag_folder, run_id, topics, align_heading=True)
+        save_errors_to_csv(pos_errors, bag_folder, run_id, label="position_gps_vs_odometry")
+        
+        path_tracking_errors = calculate_path_tracking_error(bag_folder, run_id, topics, offset_angle=pos_errors["offset_angle"]['degrees'])
+        save_errors_to_csv(path_tracking_errors, bag_folder, run_id, label="path_tracking")
         
         drift_errors = calculate_length_drift_error(bag_folder, run_id, topics)
         save_errors_to_csv(drift_errors, bag_folder, run_id, label="length_drift")
@@ -48,7 +52,11 @@ def analyze_data(bag_folder, config_path):
         plot_distance_to_waypoints(bag_folder, run_id, topics, waypoint_indices=[0, 1, 2, 3])
 
         # Plot trajectory for odometry and GPS
-        plot_single_trajectory_or_comparison(bag_folder, run_id, topics, plot_estimated_trajectory=True, plot_gps_trajectory=True, offset_est=False, offset_gps=False)
+        plot_single_trajectory_or_comparison(bag_folder, run_id, topics, 
+                                             plot_estimated_trajectory=True, 
+                                             plot_gps_trajectory=True, 
+                                             offset_est=False, offset_gps=False, 
+                                             offset_angle=pos_errors["offset_angle"]['degrees'])
 
 def main():
     parser = argparse.ArgumentParser(description="Run full data analysis pipeline.")
